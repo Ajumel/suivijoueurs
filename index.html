@@ -173,7 +173,7 @@ var Storage = {
 var flushTimer = null;
 function flushQueueSoon() {
   if (flushTimer) return;
-  flushTimer = setTimeout(function () { flushTimer = null; flushQueue(); }, 800);
+  flushTimer = setTimeout(function () { flushTimer = null; flushQueue(); }, 200);
 }
 
 function flushQueue() {
@@ -213,7 +213,47 @@ function pullFromRemote(key) {
     .catch(function () { return null; });
 }
 
-window.addEventListener("online", function () { flushQueue(); render(); });
+function pullAllFromRemote() {
+  if (!SYNC_URL || !navigator.onLine) return Promise.resolve({ changed: false, remoteKeys: [] });
+  return fetch(SYNC_URL)
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data || !data.all) return { changed: false, remoteKeys: [] };
+      var pendingKeys = {};
+      syncQueue.forEach(function (q) { pendingKeys[q.key] = true; });
+      var changed = false;
+      var remoteKeys = Object.keys(data.all);
+      remoteKeys.forEach(function (k) {
+        if (!pendingKeys[k]) {
+          localStorage.setItem(k, JSON.stringify(data.all[k]));
+          changed = true;
+        }
+      });
+      return { changed: changed, remoteKeys: remoteKeys };
+    })
+    .catch(function () { return { changed: false, remoteKeys: [] }; });
+}
+
+function syncOnLoad() {
+  return pullAllFromRemote().then(function (result) {
+    if (result.changed) {
+      players = Storage.get("sef-players-v1") || players;
+      info = Storage.get("sef-info-v1") || info;
+      matches = Storage.get("sef-matches-v1") || matches;
+    }
+    runMigrationsAndEnsure();
+    // Premier lancement absolu : si le serveur ne connaissait pas encore ces clés
+    // de base, on les envoie maintenant pour que les autres appareils les trouvent.
+    var known = {};
+    result.remoteKeys.forEach(function (k) { known[k] = true; });
+    if (!known["sef-players-v1"]) Storage.set("sef-players-v1", players);
+    if (!known["sef-info-v1"]) Storage.set("sef-info-v1", info);
+    if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
+    render();
+  });
+}
+
+window.addEventListener("online", function () { flushQueue(); syncOnLoad(); });
 window.addEventListener("offline", function () { render(); });
 
 function updateSyncBadge() {
@@ -479,12 +519,11 @@ var players = Storage.get("sef-players-v1");
 var info = Storage.get("sef-info-v1");
 var matches = Storage.get("sef-matches-v1");
 
-if (!players) { players = defaultPlayers(); Storage.set("sef-players-v1", players); }
-if (!info) { info = defaultInfo(); Storage.set("sef-info-v1", info); }
-if (!matches) { matches = []; Storage.set("sef-matches-v1", matches); }
+if (!players) { players = defaultPlayers(); localStorage.setItem("sef-players-v1", JSON.stringify(players)); }
+if (!info) { info = defaultInfo(); localStorage.setItem("sef-info-v1", JSON.stringify(info)); }
+if (!matches) { matches = []; localStorage.setItem("sef-matches-v1", JSON.stringify(matches)); }
 
-// Rattrapage : synchroniser club/coordonnées si le référentiel a changé, sans écraser les saisies manuelles d'autres champs
-(function migratePlayers() {
+function migratePlayers() {
   var changed = false;
   players.forEach(function (pl) {
     var known = ROSTER_INFO[pl.prenom + " " + pl.nom];
@@ -497,7 +536,7 @@ if (!matches) { matches = []; Storage.set("sef-matches-v1", matches); }
     if (known.email && pl.email !== known.email) { pl.email = known.email; changed = true; }
   });
   if (changed) Storage.set("sef-players-v1", players);
-})();
+}
 
 function savePlayers() { Storage.set("sef-players-v1", players); }
 function saveInfo() { Storage.set("sef-info-v1", info); }
@@ -512,7 +551,7 @@ function clubsFromPlayers() {
     return { club: club, code: (info.clubCodes && info.clubCodes[club]) || "", players: players.filter(function (p) { return p.club === club; }) };
   });
 }
-(function ensureClubCodes() {
+function ensureClubCodes() {
   var clubs = clubsFromPlayers();
   var changed = false;
   if (!info.clubCodes) info.clubCodes = {};
@@ -520,8 +559,8 @@ function clubsFromPlayers() {
     if (!info.clubCodes[c.club]) { info.clubCodes[c.club] = generateCode(c.club); changed = true; }
   });
   if (changed) saveInfo();
-})();
-(function ensureWeeks() {
+}
+function ensureWeeks() {
   var SCHOOL_YEAR_ID = "2026-2027";
   if (info.weeksPreparedFor === SCHOOL_YEAR_ID) return;
   players.forEach(function (p) {
@@ -534,7 +573,12 @@ function clubsFromPlayers() {
   });
   info.weeksPreparedFor = SCHOOL_YEAR_ID;
   saveInfo();
-})();
+}
+function runMigrationsAndEnsure() {
+  migratePlayers();
+  ensureClubCodes();
+  ensureWeeks();
+}
 
 function nav(screen) { App.screen = screen; App.error = ""; render(); window.scrollTo(0, 0); }
 
@@ -2087,7 +2131,16 @@ function screenPlayerHome(isAdmin) {
 }
 
 /* ============ DEMARRAGE ============ */
-nav("welcome");
+// Hors-ligne ou sans URL de synchro : on applique tout de suite (comportement d'origine).
+// En ligne : on tente d'abord de récupérer les données déjà partagées par les autres appareils,
+// pour éviter qu'un nouvel appareil ne régénère ses propres codes/semaines en double.
+if (SYNC_URL && navigator.onLine) {
+  nav("welcome");
+  syncOnLoad();
+} else {
+  runMigrationsAndEnsure();
+  nav("welcome");
+}
 </script>
 </body>
 </html>
