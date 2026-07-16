@@ -256,6 +256,44 @@ function syncOnLoad() {
 window.addEventListener("online", function () { flushQueue(); syncOnLoad(); });
 window.addEventListener("offline", function () { render(); });
 
+function periodicSync() {
+  if (!SYNC_URL || !navigator.onLine) return;
+  pullAllFromRemote().then(function (result) {
+    if (result.changed) {
+      players = Storage.get("sef-players-v1") || players;
+      info = Storage.get("sef-info-v1") || info;
+      matches = Storage.get("sef-matches-v1") || matches;
+      render();
+    }
+  });
+}
+setInterval(periodicSync, 30000);
+
+function manualRefresh() {
+  var btn = document.getElementById("refresh-btn");
+  if (btn) btn.textContent = "⏳";
+  if (!SYNC_URL) {
+    if (btn) setTimeout(function () { btn.textContent = "🔄"; }, 600);
+    return;
+  }
+  if (!navigator.onLine) {
+    if (btn) setTimeout(function () { btn.textContent = "🔄"; }, 600);
+    return;
+  }
+  pullAllFromRemote().then(function (result) {
+    if (result.changed) {
+      players = Storage.get("sef-players-v1") || players;
+      info = Storage.get("sef-info-v1") || info;
+      matches = Storage.get("sef-matches-v1") || matches;
+    }
+    render();
+  });
+}
+function refreshButtonHtml() {
+  if (!SYNC_URL) return "";
+  return '<button id="refresh-btn" onclick="manualRefresh()" title="Actualiser" style="border:1px solid var(--rouge);background:transparent;color:#fff;border-radius:8px;width:32px;height:32px;font-size:14px;cursor:pointer;margin-right:6px">🔄</button>';
+}
+
 function updateSyncBadge() {
   var b = document.getElementById("sync-badge");
   if (b) b.textContent = syncQueue.length > 0 ? "⏳ " + syncQueue.length + " en attente d'envoi" : "";
@@ -528,12 +566,12 @@ function migratePlayers() {
   players.forEach(function (pl) {
     var known = ROSTER_INFO[pl.prenom + " " + pl.nom];
     if (!known) return;
-    if (known.club && pl.club !== known.club) { pl.club = known.club; changed = true; }
+    if (!pl.club && known.club) { pl.club = known.club; changed = true; }
     if (!pl.classe && known.classe) { pl.classe = known.classe; changed = true; }
     if (!pl.dateNaissance && known.dateNaissance) { pl.dateNaissance = known.dateNaissance; changed = true; }
-    if (known.telPerso && pl.telPerso !== known.telPerso) { pl.telPerso = known.telPerso; changed = true; }
-    if (known.telParents && pl.telParents !== known.telParents) { pl.telParents = known.telParents; changed = true; }
-    if (known.email && pl.email !== known.email) { pl.email = known.email; changed = true; }
+    if (!pl.telPerso && known.telPerso) { pl.telPerso = known.telPerso; changed = true; }
+    if (!pl.telParents && known.telParents) { pl.telParents = known.telParents; changed = true; }
+    if (!pl.email && known.email) { pl.email = known.email; changed = true; }
   });
   if (changed) Storage.set("sef-players-v1", players);
 }
@@ -880,8 +918,16 @@ function tabDocuments(isAdmin) {
       var f = draft;
       html += fieldInput("docDate", "Date", f.date, "", "date") +
         fieldInput("titre", "Titre", f.titre, "Ex : Convocation match UNSS") +
-        '<div class="field"><label>Texte</label>' + voiceTextarea("docTexte", f.texte || "", "") + '</div>' +
-        fieldInput("lien", "Lien (optionnel)", f.lien, "https://...") +
+        '<div class="field"><label>Texte</label>' + voiceTextarea("docTexte", f.texte || "", "") + '</div>';
+      if (SYNC_URL) {
+        html += '<div class="field"><label>Déposer un fichier (PDF, image... 8 Mo max)</label>' +
+          '<input type="file" id="doc-file-input" onchange="uploadDocFile(this)">' +
+          '<div id="doc-upload-status" style="font-size:12px;color:var(--gris);margin-top:6px">' +
+          (f.lien ? '📎 Fichier prêt : <a href="' + esc(f.lien) + '" target="_blank">voir le lien</a>' : '') + '</div></div>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--gris);margin-bottom:10px">Le dépôt de fichier nécessite la synchronisation activée.</div>';
+      }
+      html += fieldInput("lien", "Lien (rempli automatiquement si tu déposes un fichier, ou colle un lien toi-même)", f.lien, "https://...") +
         '<div class="row"><button class="btn btn-ghost" onclick="cancelDocEdit()">Annuler</button><button class="btn btn-accent" onclick="saveDoc()">Enregistrer</button></div>';
     }
     html += '</div>';
@@ -892,11 +938,48 @@ function tabDocuments(isAdmin) {
       '<div><span style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(d.date) + '</span> <span style="font-size:13px;font-weight:700;color:var(--noir)">' + esc(d.titre || "Sans titre") + '</span></div>' +
       (isAdmin ? '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deleteDoc(\'' + d.id + '\')">Suppr.</button>' : '') + '</div>' +
       (d.texte ? '<div style="font-size:14px;color:#334036;margin-bottom:' + (d.lien ? "8px" : "0") + '">' + esc(d.texte) + '</div>' : '') +
-      (d.lien ? '<a href="' + esc(d.lien) + '" target="_blank" style="font-size:13px;font-weight:700">' + esc(d.lien) + '</a>' : '') +
+      (d.lien ? '<a href="' + esc(d.lien) + '" target="_blank" style="font-size:13px;font-weight:700">📎 Télécharger le document</a>' : '') +
       (isAdmin ? '<button style="border:none;background:none;color:var(--rouge);font-size:12px;cursor:pointer;margin-top:8px;display:block" onclick="startDocEdit(\'' + d.id + '\')">Modifier</button>' : '') +
       '</div>';
   });
   return html;
+}
+function uploadDocFile(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var statusEl = document.getElementById("doc-upload-status");
+  if (!navigator.onLine) {
+    statusEl.textContent = "⚠️ Il faut être en ligne pour déposer un fichier.";
+    return;
+  }
+  var MAX_SIZE = 8 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    statusEl.textContent = "⚠️ Fichier trop volumineux (8 Mo maximum).";
+    return;
+  }
+  statusEl.textContent = "⏳ Envoi en cours...";
+  var reader = new FileReader();
+  reader.onload = function () {
+    var base64Data = reader.result.split(",")[1];
+    fetch(SYNC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "uploadFile", filename: file.name, mimeType: file.type || "application/octet-stream", base64Data: base64Data }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data && data.ok) {
+          draft.lien = data.url;
+          statusEl.innerHTML = "✅ " + esc(file.name) + ' déposé — <a href="' + esc(data.url) + '" target="_blank">voir le lien</a>';
+          var lienInput = document.getElementById("f-lien");
+          if (lienInput) lienInput.value = data.url;
+        } else {
+          statusEl.textContent = "⚠️ Échec de l'envoi. Réessaie.";
+        }
+      })
+      .catch(function () { statusEl.textContent = "⚠️ Échec de l'envoi (connexion). Réessaie."; });
+  };
+  reader.readAsDataURL(file);
 }
 function startDocEdit(id) {
   App.docEditingId = id;
@@ -1589,7 +1672,7 @@ function screenClubHome() {
   var clubs = clubsFromPlayers();
   var club = clubs.find(function (c) { return c.club === App.activeClub; }) || { club: App.activeClub, players: [] };
   var html = '<div class="header"><div><div class="title">' + esc(club.club) + '</div><div class="sub">Vue éducateur de club</div></div>' +
-    '<button class="btn-header" onclick="exitClub()">Quitter</button></div>' +
+    '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitClub()">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg)">' +
     '<div style="font-size:12px;color:var(--gris);margin-bottom:12px">' + club.players.length + ' joueur' + (club.players.length > 1 ? "s" : "") + ' du Sport-Études suivi' + (club.players.length > 1 ? "s" : "") + ' dans votre club.</div>';
   club.players.slice().sort(byNomPrenom).forEach(function (p) {
@@ -1608,11 +1691,12 @@ function screenAdminHome() {
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   var clubs = clubsFromPlayers();
 
-  var html = '<div class="header"><div class="title">Administration</div><button class="btn-header" onclick="nav(\'welcome\')">Quitter</button></div>' +
+  var html = '<div class="header"><div class="title">Administration</div><div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="nav(\'welcome\')">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
 
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminPlanning\')">📅 Voir / modifier le planning</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminInfos\')">📋 Infos, documents, projet & charte</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
@@ -1977,6 +2061,130 @@ function screenAdminEducateurAvis() {
   return html;
 }
 
+/* ============ IMPORT EN MASSE ============ */
+function parseFlexDate(str) {
+  str = (str || "").trim();
+  if (!str) return "";
+  var m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return m[1] + "-" + pad2(+m[2]) + "-" + pad2(+m[3]);
+  m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[3] + "-" + pad2(+m[2]) + "-" + pad2(+m[1]);
+  return "";
+}
+function parsePastedRows(text) {
+  return text.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean).map(function (line) {
+    return line.split("\t").length > 1 ? line.split("\t") : line.split(";");
+  });
+}
+
+function screenAdminImport() {
+  if (!App.importSub) App.importSub = "joueurs";
+  var html = '<div class="header"><div class="title">Import en masse</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+  html += '<div class="row" style="margin-bottom:14px">' +
+    '<button class="pill ' + (App.importSub === "joueurs" ? "active" : "") + '" style="flex:1" onclick="setImportSub(\'joueurs\')">Joueurs</button>' +
+    '<button class="pill ' + (App.importSub === "planning" ? "active" : "") + '" style="flex:1" onclick="setImportSub(\'planning\')">Planning</button></div>';
+
+  if (App.importSub === "joueurs") {
+    html += '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">' +
+      '<b>Format attendu</b> — colle directement une plage de cellules copiée depuis Excel ou Google Sheets (une ligne par joueur), colonnes dans cet ordre :<br>' +
+      '<code style="font-size:11px">Nom · Prénom · Groupe · Classe · Poste · Club · Entraîneur · Tél. entraîneur · Tél. personnel · Tél. parents · Email · Date de naissance (JJ/MM/AAAA)</code><br>' +
+      'Les colonnes vides à la fin peuvent être omises. Un joueur déjà existant (même nom + prénom) est mis à jour, pas dupliqué.</div>';
+    html += '<div class="card"><div class="field"><label>Colle ta liste ici</label>' +
+      '<textarea id="import-joueurs-text" style="min-height:160px;font-family:monospace;font-size:12px" oninput="App.importText=this.value">' + esc(App.importText || "") + '</textarea></div>' +
+      '<button class="btn btn-accent btn-block" onclick="runImportJoueurs()">Importer</button></div>';
+  } else {
+    html += '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">' +
+      '<b>Format attendu</b> — une ligne par événement, colonnes dans cet ordre :<br>' +
+      '<code style="font-size:11px">Date (JJ/MM/AAAA ou AAAA-MM-JJ) · Heure (optionnelle, ex 18:00) · Thème de cycle (optionnel) · Événement (optionnel)</code><br>' +
+      'Une date déjà présente dans le planning est mise à jour, pas dupliquée.</div>';
+    html += '<div class="card"><div class="field"><label>Colle ton planning ici</label>' +
+      '<textarea id="import-planning-text" style="min-height:160px;font-family:monospace;font-size:12px" oninput="App.importText=this.value">' + esc(App.importText || "") + '</textarea></div>' +
+      '<button class="btn btn-accent btn-block" onclick="runImportPlanning()">Importer</button></div>';
+  }
+
+  if (App.importResult) {
+    html += '<div class="card" style="border:2px solid var(--rouge)"><div style="font-weight:800;color:var(--noir);margin-bottom:6px">Résultat de l\'import</div>' +
+      '<div style="font-size:14px;color:#334036">' + esc(App.importResult) + '</div></div>';
+  }
+  html += '</div>';
+  return html;
+}
+function setImportSub(s) { App.importSub = s; App.importText = ""; App.importResult = null; render(); }
+
+function runImportJoueurs() {
+  var rows = parsePastedRows(App.importText || "");
+  var created = 0, updated = 0;
+  rows.forEach(function (cols) {
+    var nom = (cols[0] || "").trim();
+    var prenom = (cols[1] || "").trim();
+    if (!nom || !prenom) return;
+    var groupe = (cols[2] || "").trim();
+    var classe = (cols[3] || "").trim();
+    var poste = (cols[4] || "").trim();
+    var club = (cols[5] || "").trim();
+    var entraineur = (cols[6] || "").trim();
+    var telEntraineur = (cols[7] || "").trim();
+    var telPerso = (cols[8] || "").trim();
+    var telParents = (cols[9] || "").trim();
+    var email = (cols[10] || "").trim();
+    var dateNaissance = parseFlexDate(cols[11] || "");
+
+    var existing = players.find(function (p) { return p.nom.toLowerCase() === nom.toLowerCase() && p.prenom.toLowerCase() === prenom.toLowerCase(); });
+    if (existing) {
+      if (groupe) existing.groupe = groupe;
+      if (classe) existing.classe = classe;
+      if (poste) existing.poste = poste;
+      if (club) existing.club = club;
+      if (entraineur) existing.entraineur = entraineur;
+      if (telEntraineur) existing.telEntraineur = telEntraineur;
+      if (telPerso) existing.telPerso = telPerso;
+      if (telParents) existing.telParents = telParents;
+      if (email) existing.email = email;
+      if (dateNaissance) existing.dateNaissance = dateNaissance;
+      updated++;
+    } else {
+      players.push({
+        id: "p" + uid(), nom: nom, prenom: prenom, groupe: groupe || "Groupe 1",
+        classe: classe, poste: poste, club: club, entraineur: entraineur,
+        telEntraineur: telEntraineur, telPerso: telPerso, telParents: telParents,
+        email: email, dateNaissance: dateNaissance, code: generateCode(prenom),
+      });
+      created++;
+    }
+  });
+  savePlayers();
+  ensureClubCodes();
+  ensureWeeks();
+  App.importResult = created + " joueur(s) créé(s), " + updated + " joueur(s) mis à jour.";
+  render();
+}
+
+function runImportPlanning() {
+  var rows = parsePastedRows(App.importText || "");
+  var created = 0, updated = 0;
+  rows.forEach(function (cols) {
+    var date = parseFlexDate(cols[0] || "");
+    if (!date) return;
+    var heure = (cols[1] || "").trim();
+    var theme = (cols[2] || "").trim();
+    var evenement = (cols[3] || "").trim();
+    var existing = info.programmation.find(function (e) { return e.date === date; });
+    if (existing) {
+      if (heure) existing.heure = heure;
+      if (theme) existing.theme = theme;
+      if (evenement) existing.evenement = evenement;
+      updated++;
+    } else {
+      info.programmation.push({ id: uid(), date: date, heure: heure, theme: theme, evenement: evenement });
+      created++;
+    }
+  });
+  saveInfo();
+  App.importResult = created + " événement(s) créé(s), " + updated + " événement(s) mis à jour.";
+  render();
+}
+
 /* ============ ECRAN : ACCUEIL ============ */
 function screenWelcome() {
   return '' +
@@ -2055,6 +2263,7 @@ function render() {
     case "adminBulkMatch": body = screenAdminBulkMatch(); break;
     case "adminBulkDate": body = screenAdminBulkDate(); break;
     case "adminEducateurAvis": body = screenAdminEducateurAvis(); break;
+    case "adminImport": body = screenAdminImport(); break;
     default: body = screenWelcome();
   }
   var banner = "";
@@ -2124,7 +2333,7 @@ function screenPlayerHome(isAdmin) {
 
   return '<div class="header">' +
       '<div><div class="title">' + esc(player.prenom) + " " + esc(player.nom) + '</div><div class="sub">' + esc(roleLabel) + '</div></div>' +
-      '<button class="btn-header" onclick="exitPlayer()">' + (isAdmin ? "Retour" : "Quitter") + '</button>' +
+      '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitPlayer()">' + (isAdmin ? "Retour" : "Quitter") + '</button></div>' +
     '</div>' +
     '<div style="flex:1;padding:14px;background:var(--bg)">' + content + '</div>' +
     '<div class="tabbar">' + tabsHtml + '</div>';
