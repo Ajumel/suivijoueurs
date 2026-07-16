@@ -1,0 +1,2083 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Suivi Sport-Études — Gacé</title>
+<style>
+  :root {
+    --noir: #1A1A1A;
+    --rouge: #B3202C;
+    --or: #D4AF37;
+    --or-clair: #FDF6E3;
+    --or-bord: #F0DEB0;
+    --bg: #f7f8f4;
+    --texte: #334036;
+    --gris: #8b9186;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #e9eae6;
+    color: var(--texte);
+  }
+  #shell {
+    max-width: 440px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .header {
+    background: var(--noir);
+    color: #fff;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .header .title { font-weight: 800; font-size: 15px; }
+  .header .sub { font-size: 11px; color: var(--or); }
+  .btn {
+    display: inline-block;
+    text-align: center;
+    padding: 11px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 0.2px;
+    text-decoration: none;
+  }
+  .btn-block { width: 100%; }
+  .btn-accent { background: var(--rouge); color: #fff; }
+  .btn-primary { background: var(--noir); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--noir); border: 1px solid var(--noir); }
+  .btn-danger { background: transparent; color: #B3412E; border: 1px solid #e3b3aa; }
+  .btn-header {
+    border: 1px solid var(--rouge); background: transparent; color: #fff;
+    border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e3e7de;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card-dark { background: var(--noir); color: #fff; }
+  .card-gold { background: var(--or-clair); border: 1px solid var(--or-bord); }
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block; font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--gris); margin-bottom: 4px;
+  }
+  input[type=text], input[type=date], input[type=time], input[type=password],
+  input[type=email], input[type=number], select, textarea {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #d7dcd3; font-size: 15px; font-family: inherit; background: #fff; color: #1C2620;
+  }
+  textarea { resize: vertical; min-height: 55px; }
+  .voice-wrap { position: relative; }
+  .voice-wrap textarea { padding-right: 42px; }
+  .mic-btn {
+    position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%;
+    border: none; cursor: pointer; background: var(--or-bord); color: var(--noir); font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mic-btn.listening { background: var(--rouge); color: #fff; animation: pulse 1.2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(179,32,44,0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(179,32,44,0); }
+    100% { box-shadow: 0 0 0 0 rgba(179,32,44,0); }
+  }
+  .tabbar {
+    position: sticky; bottom: 0; display: flex; background: #fff; border-top: 1px solid #e3e7de;
+    overflow-x: auto;
+  }
+  .tabbar button {
+    flex: 0 0 auto; min-width: 64px; padding: 10px 6px; border: none; background: transparent;
+    color: var(--gris); font-weight: 500; font-size: 10.5px; cursor: pointer;
+  }
+  .tabbar button.active { background: var(--or-clair); color: var(--noir); font-weight: 700; }
+  .tabbar button .icon { font-size: 16px; margin-bottom: 2px; display: block; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .pill-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; flex-wrap: wrap; }
+  .pill {
+    flex: 0 0 auto; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;
+    border: 1px solid #d7dcd3; background: #fff; color: var(--noir); cursor: pointer; white-space: nowrap;
+  }
+  .pill.active { border: 2px solid var(--rouge); background: var(--or-clair); }
+  .offline-banner {
+    background: #fbe7e4; color: #a33323; font-size: 12px; padding: 8px 14px; text-align: center; font-weight: 700;
+  }
+  .sync-banner {
+    background: #eef6ec; color: #2b6b1f; font-size: 12px; padding: 6px 14px; text-align: center;
+  }
+  .empty { text-align: center; color: var(--gris); font-size: 14px; padding: 24px 10px; }
+  .mini-row { margin-bottom: 6px; font-size: 14px; }
+  .mini-row b { font-size: 12px; font-weight: 700; color: #5b6b5f; }
+  a { color: var(--rouge); }
+  .center { text-align: center; }
+  .logo-header { text-align: center; padding: 36px 20px 20px; }
+  .logo-header .emoji { font-size: 34px; }
+  .logo-header .app-title { font-size: 19px; font-weight: 800; color: var(--noir); letter-spacing: 0.3px; margin-top: 6px; }
+  .logo-header .app-sub { font-size: 12px; color: var(--gris); margin-top: 2px; }
+  .scale-row { display: flex; gap: 6px; }
+  .scale-btn {
+    flex: 1; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+    border: 1px solid #d7dcd3; background: #fff; color: var(--noir);
+  }
+  .scale-btn.active { border: 2px solid var(--rouge); background: var(--or-clair); }
+  .grade-btn {
+    width: 36px; height: 36px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="shell"></div>
+<script>
+/* ============ CONFIG ============ */
+// Colle ici l'URL de ton Google Apps Script Web App une fois déployée.
+// Tant que c'est vide, l'app fonctionne 100% hors-ligne sur cet appareil (pas de partage entre appareils).
+var SYNC_URL = "";
+
+/* ============ STOCKAGE LOCAL + SYNCHRO ============ */
+var syncQueue = JSON.parse(localStorage.getItem("sef-sync-queue") || "[]");
+function saveQueue() { localStorage.setItem("sef-sync-queue", JSON.stringify(syncQueue)); }
+
+var Storage = {
+  get: function (key) {
+    var raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  },
+  set: function (key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+    if (SYNC_URL) {
+      syncQueue = syncQueue.filter(function (q) { return q.key !== key; });
+      syncQueue.push({ key: key, value: value, ts: Date.now() });
+      saveQueue();
+      flushQueueSoon();
+    }
+  },
+};
+
+var flushTimer = null;
+function flushQueueSoon() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(function () { flushTimer = null; flushQueue(); }, 800);
+}
+
+function flushQueue() {
+  if (!SYNC_URL || !navigator.onLine || syncQueue.length === 0) return;
+  var item = syncQueue[0];
+  fetch(SYNC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ key: item.key, value: item.value }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function () {
+      syncQueue.shift();
+      saveQueue();
+      updateSyncBadge();
+      if (syncQueue.length > 0) flushQueueSoon();
+    })
+    .catch(function () {
+      updateSyncBadge();
+    });
+}
+
+function pullFromRemote(key) {
+  if (!SYNC_URL || !navigator.onLine) return Promise.resolve(null);
+  return fetch(SYNC_URL + "?key=" + encodeURIComponent(key))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data && data.value !== undefined && data.value !== null) {
+        var hasPending = syncQueue.some(function (q) { return q.key === key; });
+        if (!hasPending) {
+          localStorage.setItem(key, JSON.stringify(data.value));
+          return data.value;
+        }
+      }
+      return null;
+    })
+    .catch(function () { return null; });
+}
+
+window.addEventListener("online", function () { flushQueue(); render(); });
+window.addEventListener("offline", function () { render(); });
+
+function updateSyncBadge() {
+  var b = document.getElementById("sync-badge");
+  if (b) b.textContent = syncQueue.length > 0 ? "⏳ " + syncQueue.length + " en attente d'envoi" : "";
+}
+
+/* ============ HELPERS ============ */
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function pad2(n) { return String(n).padStart(2, "0"); }
+function todayIso() { var d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+var MOIS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+var MOIS_LONG = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+var JOURS_LETTRE = ["L", "M", "M", "J", "V", "S", "D"];
+function fmtShort(iso) {
+  if (!iso) return "";
+  var p = iso.split("-");
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  return d.getUTCDate() + " " + MOIS_FR[d.getUTCMonth()];
+}
+function addDaysIso(iso, n) {
+  var p = iso.split("-");
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate());
+}
+function mondayOf(iso) {
+  var p = iso.split("-");
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  var day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day);
+  return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate());
+}
+function sundayOf(iso) { return addDaysIso(mondayOf(iso), 6); }
+function weekdayOfIso(iso) {
+  var p = iso.split("-");
+  return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay(); // 0=dim...6=sam
+}
+function stripAccents(s) { return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+function cleanNamePart(s) { return stripAccents(s || "").replace(/[^a-zA-Z]/g, ""); }
+function randomDigits4() { return String(Math.floor(Math.random() * 10000)).padStart(4, "0"); }
+function generateCode(name) {
+  var base = cleanNamePart(name);
+  var nice = base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+  return nice + randomDigits4();
+}
+function byNomPrenom(a, b) {
+  return a.nom.localeCompare(b.nom, "fr") || a.prenom.localeCompare(b.prenom, "fr");
+}
+function latestOf(list) {
+  if (!list || list.length === 0) return null;
+  var s = list.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  return s[0];
+}
+
+/* ============ SEMAINES DE L'ANNEE SCOLAIRE 2026-2027 (zone B, hors vacances) ============ */
+var SCHOOL_WEEKS = [
+  ["2026-08-31","2026-09-06"],["2026-09-07","2026-09-13"],["2026-09-14","2026-09-20"],
+  ["2026-09-21","2026-09-27"],["2026-09-28","2026-10-04"],["2026-10-05","2026-10-11"],
+  ["2026-10-12","2026-10-18"],["2026-11-02","2026-11-08"],["2026-11-09","2026-11-15"],
+  ["2026-11-16","2026-11-22"],["2026-11-23","2026-11-29"],["2026-11-30","2026-12-06"],
+  ["2026-12-07","2026-12-13"],["2026-12-14","2026-12-20"],["2027-01-04","2027-01-10"],
+  ["2027-01-11","2027-01-17"],["2027-01-18","2027-01-24"],["2027-01-25","2027-01-31"],
+  ["2027-02-01","2027-02-07"],["2027-02-08","2027-02-14"],["2027-02-15","2027-02-21"],
+  ["2027-03-08","2027-03-14"],["2027-03-15","2027-03-21"],["2027-03-22","2027-03-28"],
+  ["2027-03-29","2027-04-04"],["2027-04-05","2027-04-11"],["2027-04-12","2027-04-18"],
+  ["2027-05-03","2027-05-09"],["2027-05-10","2027-05-16"],["2027-05-17","2027-05-23"],
+  ["2027-05-24","2027-05-30"],["2027-05-31","2027-06-06"],["2027-06-07","2027-06-13"],
+  ["2027-06-14","2027-06-20"],["2027-06-21","2027-06-27"],["2027-06-28","2027-07-04"],
+];
+function currentSchoolWeekIndex() {
+  var tm = mondayOf(todayIso());
+  for (var i = 0; i < SCHOOL_WEEKS.length; i++) if (SCHOOL_WEEKS[i][0] >= tm) return i;
+  return SCHOOL_WEEKS.length - 1;
+}
+function weekLabel(w) { return fmtShort(w[0]) + " → " + fmtShort(w[1]); }
+
+var THEME_COLORS = {
+  "Conserver Récupérer": "#3FA34D",
+  "Progresser Gêner": "#2F7DDB",
+  "Déséquilibrer Ralentir": "#E8A33D",
+  "Finir Protéger": "#B3412E",
+};
+function themeColor(t) { return THEME_COLORS[t] || "#8b9186"; }
+
+var GRADE_INFO = {
+  A: { label: "Irréprochable, haut niveau", bg: "#e6f3e2", c: "#2b6b1f" },
+  B: { label: "Bien, niveau régional", bg: "#eaf3de", c: "#3b6d11" },
+  C: { label: "Correct, niveau départemental", bg: "#fdf1de", c: "#8a5a10" },
+  D: { label: "Insuffisant", bg: "#fbe7e4", c: "#a33323" },
+};
+
+var TEST_DEFS = [
+  { key: "jonglages", label: "Jonglages" },
+  { key: "m30", label: "30 m jonglés" },
+  { key: "percTech", label: "Parcours technique" },
+  { key: "circuit8", label: "Circuit en 8" },
+  { key: "frappes25", label: "Frappes 25 m" },
+  { key: "vitesse20", label: "20 m" },
+  { key: "courseBrisee", label: "Course brisée" },
+  { key: "enjambees5", label: "5 enjambées" },
+  { key: "touche2kg", label: "Touche à 2 kg" },
+  { key: "vma", label: "VMA" },
+];
+
+/* ============ DONNEES PAR DEFAUT ============ */
+function emptyPlayerData() {
+  return {
+    ressenti: [], objectifs: [], bilans: [], semaines: [], tests: [], mesures: [],
+    blessures: [], hooperLundi: [], ficheVendredi: [], semestriels: [],
+  };
+}
+
+var RAW_GROUP_A = ["MARIE MEDING Arnold","CAMUS Kélian","LECOMPTE Timéo","VESQUE Lorys","LESELLIER Pierre","ZINELABIDINE Imrane","VOLCLAIR Timéo","LELOUP Arthur","ZINEDDINE Younes","RUAULT Nathys","PRESENT Moise"];
+var RAW_GROUP_B = ["ANNOUCHE CREVEL Leny","BAZOGE Noa","BESONG Hope","CAMUS DENAIS Noé","ENGUEHARD Thomas","GABIAM DUGUE Curtis","GUYOT Swann","HIAUMET Maé","LELEIEVRE Noé","LELOUP Clément","MACHADO PINTO Timéo","NAVEAU Jayson","SIDI Yanis"];
+
+var ROSTER_INFO = {
+  "Arnold MARIE MEDING": { club: "Argentan" }, "Kélian CAMUS": { club: "Alençon" },
+  "Timéo LECOMPTE": { club: "Argentan" }, "Lorys VESQUE": { club: "Argentan" },
+  "Pierre LESELLIER": { club: "SG Domfront" }, "Imrane ZINELABIDINE": { club: "Argentan" },
+  "Timéo VOLCLAIR": { club: "Argentan" }, "Arthur LELOUP": { club: "Alençon" },
+  "Younes ZINEDDINE": { club: "Alençon" }, "Nathys RUAULT": { club: "SG Domfront" },
+  "Moise PRESENT": { club: "Alençon Courteilles" }, "Hope BESONG": { club: "Argentan" },
+  "Swann GUYOT": { club: "Alençon" },
+  "Leny ANNOUCHE CREVEL": { dateNaissance: "2012-09-17", classe: "4ème A", club: "Lisieux", telPerso: "07 75 76 87 30", telParents: "06 44 07 12 76 / 06 89 46 81 05", email: "virginiecrevel@yahoo.fr" },
+  "Noa BAZOGE": { dateNaissance: "2012-10-08", classe: "4ème B", club: "Argentan", telPerso: "07 80 45 28 81", telParents: "06 23 62 38 73 / 06 83 25 03 55", email: "therese.hebert0505@orange.fr" },
+  "Noé CAMUS DENAIS": { dateNaissance: "2012-05-07", classe: "4ème A", club: "Alençon", telPerso: "06 14 29 83 21", telParents: "06 20 99 51 78 / 06 83 25 03 55", email: "ecd.secretariat61@gmail.com" },
+  "Thomas ENGUEHARD": { dateNaissance: "2012-05-16", classe: "4ème B", club: "Flers", telPerso: "07 88 81 80 90", telParents: "06 28 79 65 13", email: "Enguehard.yohann@orange.fr" },
+  "Curtis GABIAM DUGUE": { dateNaissance: "2012-02-25", classe: "4ème B", club: "Alençon", telPerso: "06 24 66 40 73", telParents: "07 53 98 86 20 / 07 83 12 50 90", email: "lauramouah61@gmail.com" },
+  "Maé HIAUMET": { dateNaissance: "2012-01-10", classe: "4ème B", club: "Alençon", telPerso: "07 89 29 67 60", telParents: "06 61 89 45 63 / 06 88 35 82 06", email: "thiaumet@me.com" },
+  "Noé LELEIEVRE": { dateNaissance: "2012-01-11", classe: "4ème B", club: "Alençon", telPerso: "", telParents: "06 77 97 18 57", email: "fanny.f@live.fr" },
+  "Clément LELOUP": { dateNaissance: "2012-02-03", classe: "4ème A", club: "La Maladrerie", telPerso: "06 26 41 48 31", telParents: "06 46 65 17 79", email: "4segc.leloup@gmail.com" },
+  "Timéo MACHADO PINTO": { dateNaissance: "2012-01-27", classe: "4ème A", club: "Alençon", telPerso: "06 95 73 56 56", telParents: "06 10 35 20 91 / 06 74 11 28 25", email: "endiedo61@hotmail.fr" },
+  "Jayson NAVEAU": { dateNaissance: "2012-03-05", classe: "4ème A", club: "Alençon", telPerso: "06 86 27 69 93", telParents: "06 23 16 43 47", email: "bouloute61nc@gmail.com" },
+  "Yanis SIDI": { dateNaissance: "2012-05-19", classe: "4ème A", club: "Argentan", telPerso: "06 98 33 56 61", telParents: "06 25 98 18 78", email: "stephaniesidi@yahoo.fr" },
+};
+
+function parseGroup(list, groupLabel) {
+  return list.map(function (line) {
+    var words = line.split(" ");
+    var prenom = words[words.length - 1];
+    var nom = words.slice(0, -1).join(" ");
+    var known = ROSTER_INFO[prenom + " " + nom] || {};
+    return Object.assign({
+      id: "p" + uid(), nom: nom, prenom: prenom, groupe: groupLabel,
+      classe: "", poste: "", club: "", entraineur: "", telEntraineur: "",
+      telPerso: "", telParents: "", email: "", dateNaissance: "",
+      code: generateCode(prenom),
+    }, known);
+  });
+}
+function defaultPlayers() {
+  return parseGroup(RAW_GROUP_A, "Groupe 1").concat(parseGroup(RAW_GROUP_B, "Groupe 2"));
+}
+
+var PROGRAMMATION_DEFAULT = [
+  { id: "pg1", date: "2026-09-01", heure: "", theme: "Conserver Récupérer", evenement: "Rentrée" },
+  { id: "pg2", date: "2026-09-02", heure: "", theme: "", evenement: "Résenlieu \"foot-golf\"" },
+  { id: "pg3", date: "2026-09-07", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg4", date: "2026-09-14", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg5", date: "2026-09-21", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg6", date: "2026-09-28", heure: "", theme: "Conserver Récupérer", evenement: "Séjour d'intégration" },
+  { id: "pg7", date: "2026-10-05", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg8", date: "2026-10-12", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg9", date: "2026-10-14", heure: "", theme: "", evenement: "Matchs \"UNSS 1\" à Gacé" },
+  { id: "pg10", date: "2026-11-02", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg11", date: "2026-11-09", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg12", date: "2026-11-16", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg13", date: "2026-11-23", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg14", date: "2026-11-30", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg15", date: "2026-12-07", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg16", date: "2026-12-14", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg17", date: "2026-12-16", heure: "", theme: "", evenement: "Cross académique" },
+  { id: "pg18", date: "2027-01-04", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg19", date: "2027-01-11", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg20", date: "2027-01-18", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg21", date: "2027-02-01", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg22", date: "2027-02-08", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg23", date: "2027-02-10", heure: "", theme: "", evenement: "Match \"UNSS 2\" à Caen" },
+  { id: "pg24", date: "2027-02-15", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg25", date: "2027-03-08", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg26", date: "2027-03-15", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg27", date: "2027-03-22", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg28", date: "2027-03-29", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg29", date: "2027-03-31", heure: "", theme: "", evenement: "Match \"UNSS 3\" à Caen" },
+  { id: "pg30", date: "2027-04-05", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg31", date: "2027-04-12", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg32", date: "2027-05-03", heure: "", theme: "Déséquilibrer Ralentir", evenement: "Concours 6/5" },
+  { id: "pg33", date: "2027-05-10", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg34", date: "2027-05-24", heure: "", theme: "Progresser Gêner", evenement: "" },
+  { id: "pg35", date: "2027-05-31", heure: "", theme: "Déséquilibrer Ralentir", evenement: "" },
+  { id: "pg36", date: "2027-06-07", heure: "", theme: "Finir Protéger", evenement: "" },
+  { id: "pg37", date: "2027-06-14", heure: "", theme: "Conserver Récupérer", evenement: "" },
+  { id: "pg38", date: "2027-06-21", heure: "", theme: "Progresser Gêner", evenement: "" },
+];
+
+function defaultInfo() {
+  return {
+    adminCode: "GACE2026",
+    weeksPreparedFor: "",
+    clubCodes: {},
+    documents: [],
+    programmation: PROGRAMMATION_DEFAULT,
+    projetJeu: {
+      defensif: {
+        intro: "Collectivement : se déplacer / se placer en fonction du ballon, des partenaires, de l'adversaire. Respecter les distances entre les lignes : 10 à 15 m en largeur et en profondeur. Se replier VITE entre le ballon et le but, PUIS zone press.",
+        pressing: "Le pressing collectif — récupérer le ballon haut et contre-attaquer, provoquer l'erreur de l'adversaire.",
+        principe: "TOUJOURS AVANCER, sauf en cas de jeu long : recul rapide + couverture.",
+        postes: [
+          { poste: "Attaquant", texte: "Coupe les trajectoires de passe de relance vers les milieux axiaux." },
+          { poste: "Milieu excentré", texte: "Ferme l'extérieur si ballon de son côté ; resserre dans l'axe si ballon à l'opposé." },
+          { poste: "Milieu central", texte: "Place le bloc en largeur et en profondeur." },
+          { poste: "Défenseur", texte: "Se place par rapport aux milieux, marque dans les 40 derniers mètres." },
+          { poste: "Gardien", texte: "Joue HAUT et anticipe la profondeur." },
+        ],
+      },
+      offensif: {
+        principes: ["Passe en arrière = jeu vers l'AVANT", "Surnombre dans le couloir", "Changement de côté"],
+        intro: "Collectivement : être en mouvement, jouer simple (1-2-3 touches), jouer face à soi, communiquer.",
+        postes: [
+          { poste: "Attaquant", texte: "Complémentarité, anticiper le jeu de l'autre." },
+          { poste: "Milieu excentré", texte: "Relais (appel vers le ballon) ou profondeur (jeu à l'opposé)." },
+          { poste: "Milieu central", texte: "Relais et changement de jeu, percute pour créer un surnombre." },
+          { poste: "Défenseur latéral", texte: "Soutien des milieux, apporte le surnombre." },
+          { poste: "Défenseur axial", texte: "Aère le jeu, soutien permanent." },
+          { poste: "Gardien", texte: "Relance long sur un point faible, ou à la main si libre." },
+          { poste: "Remplaçant", texte: "Performant, prêt mentalement/physiquement/tactiquement." },
+        ],
+      },
+      ballonsArretes: {
+        engagement: "Le deuxième attaquant joue long opposé + pressing.",
+        touche: "Vers l'avant (profondeur/déviation) ou face à la touche.",
+        coupFranc: "Lointain (jeu rapide à 2) ou tendu vers le but.",
+        corner: "Rigueur, envie, agressivité.",
+      },
+      devise: "Esprit d'équipe, maîtrise, envie, efficacité : nous sommes MEILLEURS QU'EUX et QUE NOUS. 1+1+1…",
+    },
+    charte: {
+      privileges: "Un entraînement de qualité par jour. Une vie sportive intense (UNSS ; matches ; rencontres ; visites ; sorties). Un prêt de tenues complètes d'entraînement. Une préparation aux sélections départementales et régionales ainsi qu'au concours d'entrée du sport-études Lycée. Un suivi scolaire personnalisé. Une aide et du soutien scolaire quotidien.",
+      comportement: "Respecter et être porteur des valeurs suivantes : courage / goût de l'effort / perfectionnisme, entraide / solidarité / tolérance, amitié / fair-play / camaraderie, gentillesse / simplicité.",
+      scolarite: "Progresser lors des deux années pour avoir la meilleure moyenne possible : être attentif et participer en cours, travailler pendant les heures d'étude, apprendre régulièrement ses leçons.",
+      football: "Faire preuve d'une envie de progresser et d'un bon état d'esprit sur le terrain. La participation aux activités de recrutement ou d'entraînement privé est très fortement déconseillée.",
+      sanctions: "Tout manquement à un de ces principes entraînera des sanctions exemplaires.",
+    },
+  };
+}
+
+/* ============ ETAT GLOBAL ============ */
+var App = {
+  screen: "welcome",
+  roleChoice: "joueur",
+  code: "",
+  error: "",
+  adminCodeInput: "",
+  activePlayerId: null,
+  activeClub: null,
+  search: "",
+  bulk: {}, // état des écrans groupés (semaine/date/match choisis, etc.)
+};
+
+var players = Storage.get("sef-players-v1");
+var info = Storage.get("sef-info-v1");
+var matches = Storage.get("sef-matches-v1");
+
+if (!players) { players = defaultPlayers(); Storage.set("sef-players-v1", players); }
+if (!info) { info = defaultInfo(); Storage.set("sef-info-v1", info); }
+if (!matches) { matches = []; Storage.set("sef-matches-v1", matches); }
+
+// Rattrapage : synchroniser club/coordonnées si le référentiel a changé, sans écraser les saisies manuelles d'autres champs
+(function migratePlayers() {
+  var changed = false;
+  players.forEach(function (pl) {
+    var known = ROSTER_INFO[pl.prenom + " " + pl.nom];
+    if (!known) return;
+    if (known.club && pl.club !== known.club) { pl.club = known.club; changed = true; }
+    if (!pl.classe && known.classe) { pl.classe = known.classe; changed = true; }
+    if (!pl.dateNaissance && known.dateNaissance) { pl.dateNaissance = known.dateNaissance; changed = true; }
+    if (known.telPerso && pl.telPerso !== known.telPerso) { pl.telPerso = known.telPerso; changed = true; }
+    if (known.telParents && pl.telParents !== known.telParents) { pl.telParents = known.telParents; changed = true; }
+    if (known.email && pl.email !== known.email) { pl.email = known.email; changed = true; }
+  });
+  if (changed) Storage.set("sef-players-v1", players);
+})();
+
+function savePlayers() { Storage.set("sef-players-v1", players); }
+function saveInfo() { Storage.set("sef-info-v1", info); }
+function saveMatches() { Storage.set("sef-matches-v1", matches); }
+function getPlayerData(id) { return Storage.get("sef-pdata-" + id) || emptyPlayerData(); }
+function savePlayerData(id, data) { Storage.set("sef-pdata-" + id, data); }
+
+function clubsFromPlayers() {
+  var set = {};
+  players.forEach(function (p) { if (p.club && p.club.trim()) set[p.club] = true; });
+  return Object.keys(set).sort().map(function (club) {
+    return { club: club, code: (info.clubCodes && info.clubCodes[club]) || "", players: players.filter(function (p) { return p.club === club; }) };
+  });
+}
+(function ensureClubCodes() {
+  var clubs = clubsFromPlayers();
+  var changed = false;
+  if (!info.clubCodes) info.clubCodes = {};
+  clubs.forEach(function (c) {
+    if (!info.clubCodes[c.club]) { info.clubCodes[c.club] = generateCode(c.club); changed = true; }
+  });
+  if (changed) saveInfo();
+})();
+(function ensureWeeks() {
+  var SCHOOL_YEAR_ID = "2026-2027";
+  if (info.weeksPreparedFor === SCHOOL_YEAR_ID) return;
+  players.forEach(function (p) {
+    var pdata = getPlayerData(p.id);
+    var have = {}; (pdata.semaines || []).forEach(function (s) { have[s.weekStart] = true; });
+    var additions = SCHOOL_WEEKS.filter(function (w) { return !have[w[0]]; }).map(function (w) {
+      return { id: uid(), weekStart: w[0], weekEnd: w[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+    });
+    if (additions.length) { pdata.semaines = (pdata.semaines || []).concat(additions); savePlayerData(p.id, pdata); }
+  });
+  info.weeksPreparedFor = SCHOOL_YEAR_ID;
+  saveInfo();
+})();
+
+function nav(screen) { App.screen = screen; App.error = ""; render(); window.scrollTo(0, 0); }
+
+/* ============ MICRO (dictée vocale) ============ */
+var SpeechCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+var activeRecognition = null;
+function micHtml(fieldName) {
+  if (!SpeechCtor) return "";
+  return '<button type="button" class="mic-btn" id="mic-' + fieldName + '" onclick="toggleMic(\'' + fieldName + '\')" title="Dicter avec le micro">🎤</button>';
+}
+function toggleMic(fieldName) {
+  var ta = document.getElementById("f-" + fieldName);
+  var btn = document.getElementById("mic-" + fieldName);
+  if (!ta) return;
+  if (activeRecognition && activeRecognition._field === fieldName) {
+    activeRecognition.stop();
+    return;
+  }
+  if (activeRecognition) activeRecognition.stop();
+  var rec = new SpeechCtor();
+  rec._field = fieldName;
+  rec.lang = "fr-FR";
+  rec.continuous = true;
+  rec.interimResults = true;
+  var base = ta.value || "";
+  rec.onresult = function (event) {
+    var finalT = "", interim = "";
+    for (var i = event.resultIndex; i < event.results.length; i++) {
+      var t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalT += t; else interim += t;
+    }
+    if (finalT) base = (base ? base + " " : "") + finalT.trim();
+    ta.value = base + (interim ? " " + interim : "");
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  rec.onend = function () { if (btn) btn.classList.remove("listening"); activeRecognition = null; };
+  rec.onerror = function () { if (btn) btn.classList.remove("listening"); activeRecognition = null; };
+  activeRecognition = rec;
+  rec.start();
+  if (btn) btn.classList.add("listening");
+}
+function voiceTextarea(fieldName, value, placeholder, extraAttrs) {
+  return '<div class="voice-wrap"><textarea id="f-' + fieldName + '" ' + (extraAttrs || "") +
+    ' placeholder="' + esc(placeholder || "") + '" oninput="draftSet(\'' + fieldName + '\', this.value)">' + esc(value) + '</textarea>' +
+    micHtml(fieldName) + '</div>';
+}
+
+/* ============ DRAFT (état de formulaire local, sans re-render à chaque frappe) ============ */
+var draft = {};
+function draftSet(key, value) { draft[key] = value; }
+function draftGet(key, fallback) { return draft.hasOwnProperty(key) ? draft[key] : fallback; }
+function resetDraft(obj) { draft = Object.assign({}, obj || {}); }
+
+/* ============ ONGLET IDENTITE ============ */
+function tabIdentite(player, isAdmin, role) {
+  var canEdit = isAdmin || role === "joueur";
+  var edit = App.identiteEdit;
+  var html = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start">' +
+    '<div><div style="font-size:20px;font-weight:800;color:var(--noir)">' + esc(player.prenom) + " " + esc(player.nom) + '</div>' +
+    '<div style="font-size:13px;color:#5b6b5f;margin-top:2px">' + esc(player.groupe) + '</div></div>' +
+    (canEdit ? '<button style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:13px;cursor:pointer" onclick="toggleIdentiteEdit()">' + (edit ? "Fermer" : "Modifier") + '</button>' : '') +
+    '</div>';
+
+  if (!edit) {
+    html += '<div style="margin-top:14px;font-size:14px;color:#334036;line-height:1.8">' +
+      '<div><b>Classe :</b> ' + esc(player.classe || "—") + '</div>' +
+      '<div><b>Poste :</b> ' + esc(player.poste || "—") + '</div>' +
+      '<div><b>Date de naissance :</b> ' + esc(player.dateNaissance || "—") + '</div>' +
+      '<div><b>Email :</b> ' + esc(player.email || "—") + '</div>' +
+      '<div style="margin-top:8px"><b>Club :</b> ' + esc(player.club || "—") + '</div>' +
+      '<div><b>Entraîneur club :</b> ' + esc(player.entraineur || "—") + '</div>' +
+      '<div><b>Tél. entraîneur :</b> ' + esc(player.telEntraineur || "—") + '</div>' +
+      '<div style="margin-top:8px"><b>Tél. personnel :</b> ' + esc(player.telPerso || "—") + '</div>' +
+      '<div><b>Tél. parents :</b> ' + esc(player.telParents || "—") + '</div>' +
+      (isAdmin ? '<div style="margin-top:8px"><b>Code d\'accès :</b> <span style="background:#f2f4ef;padding:2px 8px;border-radius:6px;font-family:monospace">' + esc(player.code) + '</span></div>' : '') +
+      '</div>';
+  } else {
+    var f = draft;
+    if (!f._init) { resetDraft(player); draft._init = true; f = draft; }
+    html += '<div style="margin-top:14px">';
+    if (isAdmin) {
+      html += fieldInput("prenom", "Prénom", f.prenom);
+      html += fieldInput("nom", "Nom", f.nom);
+    }
+    html += fieldInput("classe", "Classe", f.classe, "Ex : 4ème A");
+    html += fieldInput("poste", "Poste", f.poste, "Ex : Milieu axial");
+    html += fieldInput("dateNaissance", "Date de naissance", f.dateNaissance, "", "date");
+    html += fieldInput("email", "Email", f.email);
+    html += fieldInput("club", "Club", f.club, "Nom du club");
+    html += fieldInput("entraineur", "Entraîneur club", f.entraineur, "Nom de l'entraîneur");
+    html += fieldInput("telEntraineur", "Tél. entraîneur", f.telEntraineur);
+    html += fieldInput("telPerso", "Tél. personnel", f.telPerso);
+    html += fieldInput("telParents", "Tél. parents", f.telParents);
+    if (isAdmin) {
+      html += '<div class="field"><label>Code d\'accès</label><div class="row">' +
+        '<input type="text" id="f-code" value="' + esc(f.code) + '" oninput="draftSet(\'code\', this.value)">' +
+        '<button type="button" class="btn btn-ghost" style="flex:0 0 auto" onclick="regenCodeDraft()">Régénérer</button>' +
+        '</div></div>';
+    }
+    html += '<button class="btn btn-accent btn-block" onclick="saveIdentite()">Enregistrer</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  if (!SpeechCtor) { /* no note needed */ }
+  html += '<div style="font-size:11px;color:#8b9186;text-align:center;padding:0 10px">Photo non gérée dans cette version.</div>';
+  return html;
+}
+function fieldInput(name, label, value, placeholder, type) {
+  return '<div class="field"><label>' + esc(label) + '</label>' +
+    '<input type="' + (type || "text") + '" id="f-' + name + '" value="' + esc(value || "") + '" placeholder="' + esc(placeholder || "") + '" oninput="draftSet(\'' + name + '\', this.value)"></div>';
+}
+function toggleIdentiteEdit() {
+  App.identiteEdit = !App.identiteEdit;
+  if (App.identiteEdit) { var p = players.find(function (pl) { return pl.id === App.activePlayerId; }); resetDraft(p); draft._init = true; }
+  render();
+}
+function regenCodeDraft() {
+  var el = document.getElementById("f-code");
+  var newCode = generateCode(draft.prenom || "Joueur");
+  draft.code = newCode;
+  if (el) el.value = newCode;
+}
+function saveIdentite() {
+  var idx = players.findIndex(function (p) { return p.id === App.activePlayerId; });
+  if (idx === -1) return;
+  var upd = Object.assign({}, players[idx], draft);
+  delete upd._init;
+  players[idx] = upd;
+  savePlayers();
+  App.identiteEdit = false;
+  render();
+}
+
+/* ============ PLANNING ============ */
+function buildFullCalendar() {
+  var start = SCHOOL_WEEKS[0][0], end = SCHOOL_WEEKS[SCHOOL_WEEKS.length - 1][1];
+  var byDate = {};
+  (info.programmation || []).forEach(function (e) { byDate[e.date] = e; });
+  var days = [], currentTheme = "", d = start, safety = 0;
+  while (d <= end && safety < 400) {
+    if (byDate[d] && byDate[d].theme) currentTheme = byDate[d].theme;
+    days.push({ date: d, theme: currentTheme, evenement: (byDate[d] && byDate[d].evenement) || "", heure: (byDate[d] && byDate[d].heure) || "" });
+    d = addDaysIso(d, 1);
+    safety++;
+  }
+  return days;
+}
+function groupByMonth(days) {
+  var groups = [], cur = null;
+  days.forEach(function (day) {
+    var p = day.date.split("-");
+    var key = p[0] + "-" + p[1];
+    if (!cur || cur.key !== key) { cur = { key: key, year: +p[0], month: +p[1] - 1, days: [] }; groups.push(cur); }
+    cur.days.push(day);
+  });
+  return groups;
+}
+function tabPlanning(isAdmin) {
+  if (!App.planningOpenMonth) {
+    var today = todayIso();
+    var found = groupByMonth(buildFullCalendar()).find(function (m) { return m.days.some(function (d) { return d.date === today; }); });
+    App.planningOpenMonth = found ? found.key : groupByMonth(buildFullCalendar())[0].key;
+  }
+  var calendarDays = buildFullCalendar();
+  var months = groupByMonth(calendarDays);
+  var sortedList = (info.programmation || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+
+  var html = '<div class="card card-dark"><div style="font-weight:800;font-size:15px">Planning annuel SES</div>' +
+    '<div style="font-size:12px;color:var(--or);margin-top:2px">Année scolaire 2026-2027 — Collège Jean Moulin, Gacé</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">' +
+    Object.keys(THEME_COLORS).map(function (t) {
+      return '<div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:' + THEME_COLORS[t] + ';display:inline-block"></span><span style="font-size:11px;color:#e7efe4">' + esc(t) + '</span></div>';
+    }).join("") + '</div></div>';
+
+  months.forEach(function (m) {
+    var isOpen = App.planningOpenMonth === m.key;
+    var hasToday = m.days.some(function (d) { return d.date === todayIso(); });
+    html += '<div class="card">' +
+      '<button style="display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;padding:0;cursor:pointer;' + (isOpen ? "margin-bottom:8px" : "") + '" onclick="togglePlanningMonth(\'' + m.key + '\')">' +
+      '<span style="font-weight:800;color:var(--noir);text-transform:uppercase;font-size:13px;letter-spacing:0.4px">' + MOIS_LONG[m.month] + " " + m.year + (hasToday ? ' <span style="color:var(--rouge)">●</span>' : '') + '</span>' +
+      '<span style="color:var(--gris);font-size:14px">' + (isOpen ? "▲" : "▼") + '</span></button>';
+    if (isOpen) {
+      html += '<div>';
+      m.days.forEach(function (day) {
+        var p = day.date.split("-");
+        var dNum = +p[2];
+        var wd = weekdayOfIso(day.date);
+        var letter = JOURS_LETTRE[(wd + 6) % 7];
+        var isSelected = App.selectedPlanningDay === day.date;
+        var isToday = day.date === todayIso();
+        html += '<div onclick="selectPlanningDay(\'' + day.date + '\')" style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;cursor:pointer;background:' +
+          (isSelected ? "#FDF6E3" : isToday ? "#fbf6e8" : "transparent") + ';border-left:4px solid ' + (day.theme ? themeColor(day.theme) : "transparent") + ';margin-bottom:2px">' +
+          '<div style="width:34px;flex-shrink:0;text-align:center"><div style="font-size:9px;font-weight:700;color:var(--gris)">' + letter + '</div><div style="font-size:13px;font-weight:800;color:#334036">' + dNum + '</div></div>' +
+          '<div style="flex:1;font-size:12px;color:#334036">' + (day.evenement ? '<span style="font-weight:700">' + (day.heure ? '<span style="color:var(--rouge)">' + esc(day.heure) + ' </span>' : '') + esc(day.evenement) + '</span>' : '') + '</div>' +
+          (day.evenement ? '<span style="width:6px;height:6px;border-radius:50%;background:#B3412E;flex-shrink:0"></span>' : '') +
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+
+  if (App.selectedPlanningDay) {
+    var sd = calendarDays.find(function (d) { return d.date === App.selectedPlanningDay; });
+    if (sd) {
+      html += '<div class="card" style="border:2px solid var(--noir)">' +
+        '<div style="font-weight:800;color:var(--noir);margin-bottom:6px">' + fmtShort(sd.date) + '</div>' +
+        (sd.theme ? '<div style="margin-bottom:6px"><span style="background:' + themeColor(sd.theme) + '22;color:' + themeColor(sd.theme) + ';font-weight:700;font-size:12px;padding:3px 10px;border-radius:20px">' + esc(sd.theme) + '</span></div>' : '') +
+        '<div style="font-size:14px;color:#334036">' + (sd.heure ? '<span style="font-weight:700;color:var(--rouge)">' + esc(sd.heure) + ' — </span>' : '') + esc(sd.evenement || "Aucun événement ce jour.") + '</div>';
+      if (isAdmin) {
+        var existing = sortedList.find(function (e) { return e.date === sd.date; });
+        html += '<div style="display:flex;gap:14px;margin-top:10px">' +
+          '<button style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:13px;cursor:pointer" onclick="startPlanningEdit(' + (existing ? "'" + existing.id + "'" : "null") + ', \'' + sd.date + '\')">' + (existing ? "Modifier ce jour" : "+ Ajouter un événement ce jour") + '</button>';
+        if (existing) html += '<button style="border:none;background:none;color:#B3412E;font-weight:700;font-size:13px;cursor:pointer" onclick="deletePlanningEntry(\'' + existing.id + '\')">Supprimer</button>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  }
+
+  if (isAdmin) {
+    html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Journal des événements</div>';
+    if (!App.planningShowAdd) {
+      html += '<button class="btn btn-accent btn-block" onclick="startPlanningEdit(null, null)">+ Ajouter un événement / thème</button>';
+    } else {
+      var f = draft;
+      html += fieldInput("pgDate", "Date", f.date, "", "date") +
+        '<div class="field"><label>Heure (optionnelle)</label><input type="time" id="f-pgHeure" value="' + esc(f.heure || "") + '" oninput="draftSet(\'heure\', this.value)"></div>' +
+        fieldInput("theme", "Thème de cycle (optionnel)", f.theme, "Ex : Progresser Gêner") +
+        fieldInput("evenement", "Événement (optionnel)", f.evenement, "Ex : Match UNSS à Gacé") +
+        '<div class="row"><button class="btn btn-ghost" onclick="cancelPlanningEdit()">Annuler</button><button class="btn btn-accent" onclick="savePlanningEntry()">Enregistrer</button></div>';
+    }
+    html += '<div style="margin-top:14px;max-height:340px;overflow-y:auto">';
+    sortedList.forEach(function (e) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee">' +
+        '<div><div style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(e.date) + (e.heure ? ' <span style="color:var(--rouge)">· ' + esc(e.heure) + '</span>' : '') + '</div>' +
+        (e.theme ? '<div style="font-size:13px;font-weight:700;color:' + themeColor(e.theme) + '">' + esc(e.theme) + '</div>' : '') +
+        (e.evenement ? '<div style="font-size:13px;color:#334036">' + esc(e.evenement) + '</div>' : '') + '</div>' +
+        '<div style="display:flex;gap:10px"><button style="border:none;background:none;color:var(--rouge);font-size:12px;cursor:pointer" onclick="startPlanningEdit(\'' + e.id + '\', null)">Modifier</button>' +
+        '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deletePlanningEntry(\'' + e.id + '\')">Suppr.</button></div></div>';
+    });
+    html += '</div></div>';
+  }
+  return html;
+}
+function togglePlanningMonth(key) { App.planningOpenMonth = App.planningOpenMonth === key ? null : key; render(); }
+function selectPlanningDay(date) { App.selectedPlanningDay = date; render(); }
+function startPlanningEdit(entryId, forDate) {
+  var e = entryId ? info.programmation.find(function (x) { return x.id === entryId; }) : null;
+  App.planningEditingId = entryId || null;
+  if (e) resetDraft({ date: e.date, heure: e.heure || "", theme: e.theme, evenement: e.evenement });
+  else resetDraft({ date: forDate || todayIso(), heure: "", theme: "", evenement: "" });
+  App.planningShowAdd = true;
+  render();
+}
+function cancelPlanningEdit() { App.planningShowAdd = false; App.planningEditingId = null; render(); }
+function savePlanningEntry() {
+  var f = draft;
+  if (App.planningEditingId) {
+    var idx = info.programmation.findIndex(function (e) { return e.id === App.planningEditingId; });
+    info.programmation[idx] = Object.assign({}, info.programmation[idx], f);
+  } else {
+    info.programmation.push(Object.assign({ id: uid() }, f));
+  }
+  saveInfo();
+  App.planningShowAdd = false;
+  App.planningEditingId = null;
+  render();
+}
+function deletePlanningEntry(id) {
+  info.programmation = info.programmation.filter(function (e) { return e.id !== id; });
+  saveInfo();
+  render();
+}
+
+/* ============ ONGLET INFOS (Documents / Projet / Charte) ============ */
+function tabGeneral(isAdmin) {
+  if (!App.generalSub) App.generalSub = "documents";
+  var tabs = [["documents", "Infos & Docs"], ["projet", "Projet de jeu"], ["charte", "Charte"]];
+  var html = '<div class="row" style="margin-bottom:14px">' + tabs.map(function (t) {
+    return '<button class="pill ' + (App.generalSub === t[0] ? "active" : "") + '" style="flex:1" onclick="setGeneralSub(\'' + t[0] + '\')">' + t[1] + '</button>';
+  }).join("") + '</div>';
+  if (App.generalSub === "documents") html += tabDocuments(isAdmin);
+  else if (App.generalSub === "projet") html += tabProjetJeu();
+  else html += tabCharte();
+  return html;
+}
+function setGeneralSub(s) { App.generalSub = s; render(); }
+
+function tabDocuments(isAdmin) {
+  var docs = (info.documents || []).slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  var html = '<div class="card card-dark"><div style="font-weight:800;font-size:15px">Infos & documents</div>' +
+    '<div style="font-size:12px;color:var(--or);margin-top:2px">Annonces, liens, documents partagés par Antoine.</div></div>';
+  if (isAdmin) {
+    html += '<div class="card">';
+    if (!App.docShowAdd) {
+      html += '<button class="btn btn-accent btn-block" onclick="startDocEdit(null)">+ Ajouter une info / un document</button>';
+    } else {
+      var f = draft;
+      html += fieldInput("docDate", "Date", f.date, "", "date") +
+        fieldInput("titre", "Titre", f.titre, "Ex : Convocation match UNSS") +
+        '<div class="field"><label>Texte</label>' + voiceTextarea("docTexte", f.texte || "", "") + '</div>' +
+        fieldInput("lien", "Lien (optionnel)", f.lien, "https://...") +
+        '<div class="row"><button class="btn btn-ghost" onclick="cancelDocEdit()">Annuler</button><button class="btn btn-accent" onclick="saveDoc()">Enregistrer</button></div>';
+    }
+    html += '</div>';
+  }
+  if (docs.length === 0) html += '<div class="empty">Aucune info ni document pour l\'instant.</div>';
+  docs.forEach(function (d) {
+    html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+      '<div><span style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(d.date) + '</span> <span style="font-size:13px;font-weight:700;color:var(--noir)">' + esc(d.titre || "Sans titre") + '</span></div>' +
+      (isAdmin ? '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deleteDoc(\'' + d.id + '\')">Suppr.</button>' : '') + '</div>' +
+      (d.texte ? '<div style="font-size:14px;color:#334036;margin-bottom:' + (d.lien ? "8px" : "0") + '">' + esc(d.texte) + '</div>' : '') +
+      (d.lien ? '<a href="' + esc(d.lien) + '" target="_blank" style="font-size:13px;font-weight:700">' + esc(d.lien) + '</a>' : '') +
+      (isAdmin ? '<button style="border:none;background:none;color:var(--rouge);font-size:12px;cursor:pointer;margin-top:8px;display:block" onclick="startDocEdit(\'' + d.id + '\')">Modifier</button>' : '') +
+      '</div>';
+  });
+  return html;
+}
+function startDocEdit(id) {
+  App.docEditingId = id;
+  if (id) { var d = info.documents.find(function (x) { return x.id === id; }); resetDraft({ date: d.date, titre: d.titre, texte: d.texte, lien: d.lien || "" }); }
+  else resetDraft({ date: todayIso(), titre: "", texte: "", lien: "" });
+  App.docShowAdd = true;
+  render();
+}
+function cancelDocEdit() { App.docShowAdd = false; App.docEditingId = null; render(); }
+function saveDoc() {
+  var f = { date: draft.docDate || draft.date, titre: draft.titre, texte: draft.docTexte !== undefined ? draft.docTexte : draft.texte, lien: draft.lien };
+  if (App.docEditingId) {
+    var idx = info.documents.findIndex(function (d) { return d.id === App.docEditingId; });
+    info.documents[idx] = Object.assign({}, info.documents[idx], f);
+  } else {
+    info.documents.push(Object.assign({ id: uid() }, f));
+  }
+  saveInfo();
+  App.docShowAdd = false; App.docEditingId = null;
+  render();
+}
+function deleteDoc(id) { info.documents = info.documents.filter(function (d) { return d.id !== id; }); saveInfo(); render(); }
+
+function tabProjetJeu() {
+  var pj = info.projetJeu;
+  function posteCard(postes) {
+    return postes.map(function (p) {
+      return '<div style="background:#f7f8f4;border-radius:8px;padding:8px 10px;margin-bottom:6px">' +
+        '<div style="font-size:12px;font-weight:800;color:var(--noir);margin-bottom:2px">' + esc(p.poste) + '</div>' +
+        '<div style="font-size:13px;color:#334036;line-height:1.5">' + esc(p.texte) + '</div></div>';
+    }).join("");
+  }
+  var html = '<div class="card card-dark center"><div style="font-size:17px;font-weight:800">PROJET DE JEU</div><div style="font-size:12px;color:var(--or);margin-top:2px">Section d\'excellence sportive — Football de l\'Orne</div></div>';
+  html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e3e7de">' +
+    '<div style="background:var(--noir);color:#fff;font-weight:800;font-size:13px;padding:8px 14px;text-transform:uppercase">Organisation défensive « La zone »</div>' +
+    '<div style="background:#fff;padding:14px">' +
+    '<div style="font-size:14px;color:#334036;line-height:1.6;margin-bottom:8px">' + esc(pj.defensif.intro) + '</div>' +
+    '<div style="font-size:14px;color:#334036;line-height:1.6;margin-bottom:8px">' + esc(pj.defensif.pressing) + '</div>' +
+    '<div style="background:var(--or-clair);border-radius:8px;padding:10px;margin-bottom:10px"><b>' + esc(pj.defensif.principe) + '</b></div>' +
+    '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:4px 0 6px">Individuellement, par poste :</div>' + posteCard(pj.defensif.postes) +
+    '</div></div>';
+  html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e3e7de">' +
+    '<div style="background:var(--rouge);color:#fff;font-weight:800;font-size:13px;padding:8px 14px;text-transform:uppercase">Organisation offensive</div>' +
+    '<div style="background:#fff;padding:14px">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' + pj.offensif.principes.map(function (p) {
+      return '<span style="background:#f5dcdf;color:var(--rouge);font-weight:700;font-size:12px;padding:4px 10px;border-radius:20px">' + esc(p) + '</span>';
+    }).join("") + '</div>' +
+    '<div style="font-size:14px;color:#334036;line-height:1.6;margin-bottom:8px">' + esc(pj.offensif.intro) + '</div>' +
+    '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:4px 0 6px">Individuellement, par poste :</div>' + posteCard(pj.offensif.postes) +
+    '</div></div>';
+  html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e3e7de">' +
+    '<div style="background:var(--or);color:#fff;font-weight:800;font-size:13px;padding:8px 14px;text-transform:uppercase">Ballons arrêtés</div>' +
+    '<div style="background:#fff;padding:14px;font-size:14px;color:#334036;line-height:1.7">' +
+    '<div><b>Engagement :</b> ' + esc(pj.ballonsArretes.engagement) + '</div>' +
+    '<div><b>Touche :</b> ' + esc(pj.ballonsArretes.touche) + '</div>' +
+    '<div><b>Coup franc :</b> ' + esc(pj.ballonsArretes.coupFranc) + '</div>' +
+    '<div><b>Corner :</b> ' + esc(pj.ballonsArretes.corner) + '</div>' +
+    '</div></div>';
+  html += '<div style="background:var(--noir);color:#fff;border-radius:10px;padding:16px;font-size:14px;font-weight:800;text-align:center;line-height:1.7">' + esc(pj.devise) + '</div>';
+  return html;
+}
+function tabCharte() {
+  var c = info.charte;
+  var html = '<div class="card center" style="border:2px solid var(--noir)">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--gris);letter-spacing:1px">COLLÈGE JEAN MOULIN — GACÉ</div>' +
+    '<div style="font-size:19px;font-weight:800;color:var(--noir);margin-top:4px">CHARTE DE L\'ÉLÈVE</div>' +
+    '<div style="font-size:12px;color:#5b6b5f;margin-top:2px">Section d\'excellence sportive — Football de l\'Orne</div></div>';
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:8px">Ma participation me donne des privilèges</div>' +
+    '<div style="font-size:14px;color:#334036;line-height:1.7">' + esc(c.privileges) + '</div></div>';
+  html += '<div style="font-size:12px;font-weight:700;color:var(--gris);text-align:center;margin:6px 0 10px;text-transform:uppercase">En contrepartie, je m\'engage à :</div>';
+  [["Comportement", "var(--noir)", c.comportement], ["Scolarité", "#2F7DDB", c.scolarite], ["Football", "var(--or)", c.football]].forEach(function (col) {
+    html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:12px;border:1px solid #e3e7de">' +
+      '<div style="background:' + col[1] + ';color:#fff;font-weight:800;font-size:13px;padding:8px 14px;text-align:center;text-transform:uppercase">' + col[0] + '</div>' +
+      '<div style="background:#fff;padding:14px;font-size:14px;color:#334036;line-height:1.7">' + esc(col[2]) + '</div></div>';
+  });
+  html += '<div style="background:#fbe7e4;color:#a33323;border-radius:10px;padding:14px;font-size:13px;font-weight:700;text-align:center">' + esc(c.sanctions) + '</div>';
+  return html;
+}
+
+/* ============ ONGLET MA SEANCE (Objectifs + Ressenti) ============ */
+function scaleRow(name, label, value) {
+  var opts = [1,2,3,4,5,6,7,8,9,10];
+  return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;color:#5b6b5f;margin-bottom:4px"><span>' + esc(label) + '</span><span style="font-weight:700;color:var(--noir)">' + value + '/10</span></div>' +
+    '<input type="range" min="1" max="10" value="' + value + '" style="width:100%;accent-color:var(--rouge)" oninput="draftSet(\'' + name + '\', +this.value); this.previousElementSibling.querySelector(\'span:last-child\').textContent=this.value+\'/10\'"></div>';
+}
+function resultPicker(name, value, disabled) {
+  var opts = [["+","Atteint"],["=","Partiel"],["-","Non atteint"]];
+  return '<div style="display:flex;gap:6px;margin-top:4px">' + opts.map(function (o) {
+    return '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', \'' + o[0] + '\'); render()" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:' +
+      (value === o[0] ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (value === o[0] ? "var(--or-clair)" : "#fff") + ';color:var(--noir)">' + o[1] + '</button>';
+  }).join("") + '</div>';
+}
+function resultBadge(v) {
+  var map = { "+": ["Atteint", "#e6f3e2", "#2b6b1f"], "=": ["Partiel", "#fdf1de", "#8a5a10"], "-": ["Non atteint", "#fbe7e4", "#a33323"] };
+  var m = map[v] || map["="];
+  return '<span style="background:' + m[1] + ';color:' + m[2] + ';font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px">' + m[0] + '</span>';
+}
+
+function tabSeance(player, pdata, isAdmin, role) {
+  var canEdit = isAdmin || role === "joueur";
+  if (!App.seanceDate) {
+    var lo = latestOf(pdata.objectifs), lr = latestOf(pdata.ressenti);
+    var dates = [lo && lo.date, lr && lr.date].filter(Boolean).sort();
+    App.seanceDate = dates.length ? dates[dates.length - 1] : todayIso();
+  }
+  var html = '<div class="card"><div class="field"><label>Date de la séance</label><input type="date" value="' + App.seanceDate + '" onchange="setSeanceDate(this.value)"></div></div>';
+
+  html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Fixation d\'objectifs</div>';
+  var obj = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
+  if (!draft._objInit || draft._objDate !== App.seanceDate) {
+    resetDraft(obj || { theme: "", objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", conseils: "", plaisir: 5, performance: 5, fatigue: 5 });
+    draft._objInit = true; draft._objDate = App.seanceDate;
+  }
+  var f = draft;
+  html += '<div class="card">';
+  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — réservé au joueur.</div>';
+  if (obj && canEdit) html += '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin-bottom:8px">Objectif déjà enregistré pour cette date — modifiable ci-dessous</div>';
+  html += fieldInputDisabled("theme", "Thème de la séance", f.theme, "Ex : Jeu de transition", !canEdit) +
+    '<div class="field"><label>Objectif offensif individuel</label>' + voiceTextareaDisabled("objOffensif", f.objOffensif, "", !canEdit) + '</div>' +
+    resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
+    '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
+    resultPicker("resultatDefensif", f.resultatDefensif, !canEdit) + '<div style="height:12px"></div>' +
+    '<div class="field"><label>Conseils pour les prochaines séances</label>' + voiceTextareaDisabled("conseils", f.conseils, "", !canEdit) + '</div>' +
+    scaleRow("plaisir", "Plaisir", f.plaisir) + scaleRow("performance", "Performance", f.performance) + scaleRow("fatigue", "Fatigue", f.fatigue);
+  if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveObjectif()">' + (obj ? "Mettre à jour" : "Enregistrer") + '</button>';
+  html += '</div>';
+
+  html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:20px 2px 10px">Ressenti avant / après séance</div>';
+  if (!App.ressentiMoment) App.ressentiMoment = "avant";
+  var ress = pdata.ressenti.find(function (r) { return r.date === App.seanceDate && r.moment === App.ressentiMoment; });
+  if (!draft._ressInit || draft._ressDate !== App.seanceDate || draft._ressMoment !== App.ressentiMoment) {
+    resetDraft(ress || { forme: 5, sommeil: 5, motivation: 5, charge: 5, plaisir: 5, appreciation: "" });
+    draft._ressInit = true; draft._ressDate = App.seanceDate; draft._ressMoment = App.ressentiMoment;
+  }
+  var rf = draft;
+  html += '<div class="card">';
+  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — réservé au joueur.</div>';
+  html += '<div class="row" style="margin-bottom:14px">' +
+    '<button class="pill ' + (App.ressentiMoment === "avant" ? "active" : "") + '" style="flex:1" onclick="setRessentiMoment(\'avant\')">Avant séance</button>' +
+    '<button class="pill ' + (App.ressentiMoment === "apres" ? "active" : "") + '" style="flex:1" onclick="setRessentiMoment(\'apres\')">Après séance</button></div>';
+  if (App.ressentiMoment === "avant") {
+    html += scaleRow("forme", "Forme physique", rf.forme) + scaleRow("sommeil", "Sommeil", rf.sommeil) + scaleRow("motivation", "Motivation", rf.motivation);
+  } else {
+    html += scaleRow("charge", "Charge perçue", rf.charge) + scaleRow("plaisirRess", "Plaisir", rf.plaisir) +
+      '<div class="field"><label>Appréciation sur la thématique / le travail réalisé</label>' + voiceTextareaDisabled("appreciation", rf.appreciation, "Ce que j\'ai retenu, réussi, à retravailler...", !canEdit) + '</div>';
+  }
+  if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveRessenti()">' + (ress ? "Mettre à jour" : "Enregistrer") + '</button>';
+  html += '</div>';
+  return html;
+}
+function fieldInputDisabled(name, label, value, placeholder, disabled) {
+  return '<div class="field"><label>' + esc(label) + '</label><input type="text" id="f-' + name + '" value="' + esc(value || "") + '" placeholder="' + esc(placeholder || "") + '" ' + (disabled ? "disabled" : "") + ' oninput="draftSet(\'' + name + '\', this.value)"></div>';
+}
+function voiceTextareaDisabled(name, value, placeholder, disabled) {
+  if (disabled) return '<textarea disabled>' + esc(value) + '</textarea>';
+  return voiceTextarea(name, value, placeholder);
+}
+function setSeanceDate(d) { App.seanceDate = d; draft._objInit = false; draft._ressInit = false; render(); }
+function setRessentiMoment(m) { App.ressentiMoment = m; draft._ressInit = false; render(); }
+function saveObjectif() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
+  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.seanceDate }, cleanDraft());
+  pdata.objectifs = existing ? pdata.objectifs.map(function (o) { return o.id === entry.id ? entry : o; }) : pdata.objectifs.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+function saveRessenti() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.ressenti.find(function (r) { return r.date === App.seanceDate && r.moment === App.ressentiMoment; });
+  var payload = App.ressentiMoment === "avant"
+    ? { forme: draft.forme, sommeil: draft.sommeil, motivation: draft.motivation }
+    : { charge: draft.charge, plaisir: draft.plaisirRess, appreciation: draft.appreciation };
+  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.seanceDate, moment: App.ressentiMoment }, payload);
+  pdata.ressenti = existing ? pdata.ressenti.map(function (r) { return r.id === entry.id ? entry : r; }) : pdata.ressenti.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+function cleanDraft() {
+  var d = Object.assign({}, draft);
+  Object.keys(d).forEach(function (k) { if (k.charAt(0) === "_") delete d[k]; });
+  return d;
+}
+
+/* ============ ONGLET MA SEMAINE ============ */
+function gradePicker(name, value, disabled) {
+  return '<div style="display:flex;gap:6px">' + ["A","B","C","D"].map(function (g) {
+    var gi = GRADE_INFO[g];
+    var active = value === g;
+    return '<button type="button" ' + (disabled ? "disabled" : "") + ' title="' + esc(gi.label) + '" onclick="setGradeDraft(\'' + name + '\', \'' + g + '\', ' + (active ? "true" : "false") + ')" class="grade-btn" style="cursor:' + (disabled ? "default" : "pointer") + ';opacity:' + (disabled && !active ? "0.4" : "1") + ';border:' + (active ? "2px solid " + gi.c : "1px solid #d7dcd3") + ';background:' + (active ? gi.bg : "#fff") + ';color:' + (active ? gi.c : "#8b9186") + '">' + g + '</button>';
+  }).join("") + '</div>';
+}
+function setGradeDraft(field, val, wasActive) {
+  draft[field] = wasActive ? null : val;
+  saveSemaineGrade(field, draft[field]);
+  render();
+}
+function tabSemaine(player, pdata, isAdmin, role) {
+  if (!App.semaineWeekStart) App.semaineWeekStart = SCHOOL_WEEKS[currentSchoolWeekIndex()][0];
+  var canEditJoueur = isAdmin || role === "joueur";
+  var canEditCoach = isAdmin;
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.semaineWeekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
+  var current = pdata.semaines.find(function (e) { return e.weekStart === App.semaineWeekStart; });
+  draft = current || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+
+  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Case blanche : à remplir par le joueur le jeudi soir. Case grise : remplie par le responsable de la section. Reclique sur une note pour la décocher.</div>';
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Ce que signifient les notes</div>' +
+    Object.keys(GRADE_INFO).map(function (g) {
+      var gi = GRADE_INFO[g];
+      return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="width:26px;height:26px;border-radius:6px;background:' + gi.bg + ';color:' + gi.c + ';font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">' + g + '</span><span style="font-size:13px;color:#334036">' + esc(gi.label) + '</span></div>';
+    }).join("") + '</div>';
+
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis la semaine</div><div class="pill-row">' +
+    SCHOOL_WEEKS.map(function (w) {
+      return '<button class="pill ' + (App.semaineWeekStart === w[0] ? "active" : "") + '" onclick="setSemaineWeek(\'' + w[0] + '\')">' + weekLabel(w) + '</button>';
+    }).join("") + '</div></div>';
+
+  html += '<div class="card" style="border:2px solid var(--rouge)">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--gris)">Semaine sélectionnée</div><div style="font-size:15px;font-weight:800;color:var(--noir);margin-top:2px">' + week[0] + ' → ' + week[1] + '</div>' +
+    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("perfJoueur", draft.perfJoueur, !canEditJoueur) + '</div>' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("perfCoach", draft.perfCoach, !canEditCoach) + '</div></div></div>' +
+    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("investJoueur", draft.investJoueur, !canEditJoueur) + '</div>' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("investCoach", draft.investCoach, !canEditCoach) + '</div></div></div>' +
+    '</div>';
+  return html;
+}
+function setSemaineWeek(w) { App.semaineWeekStart = w; render(); }
+function saveSemaineGrade(field, value) {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.semaineWeekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
+  var existing = pdata.semaines.find(function (e) { return e.weekStart === App.semaineWeekStart; });
+  var entry = existing ? Object.assign({}, existing) : { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+  entry[field] = value;
+  pdata.semaines = existing ? pdata.semaines.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.semaines.concat([entry]);
+  savePlayerData(pid, pdata);
+}
+
+/* ============ ONGLET HOOPER JEUDI ============ */
+function oneToTenSlider(name, label, value, disabled) {
+  return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;color:#334036;margin-bottom:4px"><span>' + esc(label) + '</span><span style="font-weight:700;color:var(--noir)">' + value + '/10</span></div>' +
+    '<input type="range" min="1" max="10" value="' + value + '" ' + (disabled ? "disabled" : "") + ' style="width:100%;accent-color:var(--rouge)" oninput="draftSet(\'' + name + '\', +this.value); this.previousElementSibling.querySelector(\'span:last-child\').textContent=this.value+\'/10\'"></div>';
+}
+function ouiNonPicker(name, label, value, disabled) {
+  return '<div style="margin-bottom:10px"><div style="font-size:13px;color:#334036;margin-bottom:4px">' + esc(label) + '</div><div style="display:flex;gap:8px">' +
+    ["Oui","Non"].map(function (v) {
+      return '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', \'' + v + '\'); render()" style="flex:1;padding:9px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:' +
+        (value === v ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (value === v ? "var(--or-clair)" : "#fff") + ';color:var(--noir)">' + v + '</button>';
+    }).join("") + '</div></div>';
+}
+function tabHooperJeudi(player, pdata, isAdmin, role) {
+  var canEdit = isAdmin || role === "joueur";
+  if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : todayIso(); }
+  var current = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
+  if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
+    resetDraft(current || { sommeil: 5, fatigueMentale: 5, fatiguePhysique: 5, effortPercu: 5, etatForme: 5, confiance: 5, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", infosEntraineur: "", presenceVendredi: "Oui" });
+    draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
+  }
+  var f = draft;
+  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Fiche hebdomadaire à partager avec ton entraîneur de club avant la séance du vendredi.</div>';
+  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
+  html += '<div class="card"><div class="field"><label>Date</label><input type="date" value="' + App.hooperJeudiDate + '" onchange="setHooperJeudiDate(this.value)"></div>' +
+    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '') + '</div>';
+  html += '<div class="card">';
+  if (canEdit) {
+    html += oneToTenSlider("sommeil", "Sommeil : as-tu bien dormi cette semaine ?", f.sommeil) +
+      oneToTenSlider("fatigueMentale", "Fatigue mentale", f.fatigueMentale) +
+      oneToTenSlider("fatiguePhysique", "Fatigue physique", f.fatiguePhysique) +
+      oneToTenSlider("effortPercu", "Effort perçu séance de ce matin", f.effortPercu) +
+      oneToTenSlider("etatForme", "État de forme actuel", f.etatForme) +
+      oneToTenSlider("confiance", "Niveau de confiance", f.confiance) +
+      fieldInput("principeOffensif", "Principe offensif abordé cette semaine", f.principeOffensif) +
+      fieldInput("principeDefensif", "Principe défensif abordé cette semaine", f.principeDefensif) +
+      '<div class="field"><label>Tes deux points forts de la semaine</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div>' +
+      '<div class="field"><label>Tes deux points à améliorer</label>' + voiceTextarea("pointsAmeliorer", f.pointsAmeliorer, "") + '</div>' +
+      ouiNonPicker("aJoueSection", "As-tu joué avec la section cette semaine ?", f.aJoueSection) +
+      '<div class="field"><label>Informations à partager à ton entraîneur</label>' + voiceTextarea("infosEntraineur", f.infosEntraineur, "") + '</div>' +
+      ouiNonPicker("presenceVendredi", "Seras-tu présent vendredi à la séance de ton club ?", f.presenceVendredi) +
+      '<button class="btn btn-accent btn-block" onclick="saveHooperJeudi()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
+  } else {
+    html += readOnlyRows([
+      ["Sommeil", f.sommeil + "/10"], ["Fatigue mentale", f.fatigueMentale + "/10"], ["Fatigue physique", f.fatiguePhysique + "/10"],
+      ["Forme", f.etatForme + "/10"], ["Confiance", f.confiance + "/10"],
+      ["Principe offensif", f.principeOffensif], ["Principe défensif", f.principeDefensif],
+      ["Points forts", f.pointsForts], ["À améliorer", f.pointsAmeliorer],
+      ["A joué avec la section", f.aJoueSection], ["Présence vendredi", f.presenceVendredi],
+    ]);
+  }
+  html += '</div>';
+  return html;
+}
+function readOnlyRows(pairs) {
+  return pairs.filter(function (p) { return p[1]; }).map(function (p) {
+    return '<div class="mini-row"><b>' + esc(p[0]) + ' : </b>' + esc(p[1]) + '</div>';
+  }).join("");
+}
+function setHooperJeudiDate(d) { App.hooperJeudiDate = d; draft._hjInit = false; render(); }
+function saveHooperJeudi() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
+  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.hooperJeudiDate }, cleanDraft());
+  pdata.ficheVendredi = existing ? pdata.ficheVendredi.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.ficheVendredi.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+
+/* ============ ONGLET MATCH SECTION ============ */
+function notePicker(name, value, disabled) {
+  var html = '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+  for (var n = 0; n <= 10; n++) {
+    var active = value === n;
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" style="width:30px;height:30px;border-radius:6px;font-size:12px;font-weight:700;border:' +
+      (active ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (active ? "var(--or-clair)" : "#fff") + ';color:' + (active ? "var(--noir)" : "#8b9186") + ';cursor:pointer">' + n + '</button>';
+  }
+  return html + '</div>';
+}
+function tabMatchSection(player, pdata, isAdmin, role) {
+  var canEditPlayer = isAdmin || role === "joueur";
+  var sorted = matches.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  if (sorted.length === 0) return '<div class="empty">Aucun match de section pour l\'instant.</div>';
+  if (!App.matchSelectedId) App.matchSelectedId = sorted[0].id;
+  var match = sorted.find(function (m) { return m.id === App.matchSelectedId; }) || sorted[0];
+  var mine = pdata.bilans.find(function (b) { return b.matchId === match.id; });
+
+  var html = '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis le match</div><div class="pill-row">' +
+    sorted.map(function (m) { return '<button class="pill ' + (App.matchSelectedId === m.id ? "active" : "") + '" onclick="selectMatchSection(\'' + m.id + '\')">' + m.date + ' · vs ' + esc(m.adversaire || "?") + '</button>'; }).join("") +
+    '</div></div>';
+
+  var blank = { dispositif: "", compositionEquipe: "", consignesAvantMatch: "", scoreMiTemps: "", consignesMiTemps: "", objectifMatch: "", objectifResultat: "=", commentMatch: "", perspectives: "", noteJoueur: null, commentaireProf: "", noteProf: null };
+  if (!draft._msInit || draft._msMatch !== match.id) { resetDraft(mine || blank); draft._msInit = true; draft._msMatch = match.id; }
+  var f = draft;
+
+  html += '<div class="card" style="border:2px solid var(--rouge)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+    '<div><span style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(match.date) + '</span> <b>vs ' + esc(match.adversaire || "?") + '</b></div>' +
+    (match.scoreFinal ? '<div style="font-weight:800;color:var(--noir)">' + esc(match.scoreFinal) + '</div>' : '') + '</div>';
+
+  if (canEditPlayer) {
+    html += fieldInput("dispositif", "Dispositif", f.dispositif, "Ex : 4-3-3") +
+      '<div class="field"><label>Composition d\'équipe</label>' + voiceTextarea("compositionEquipe", f.compositionEquipe, "") + '</div>' +
+      '<div class="field"><label>Consignes d\'avant match</label>' + voiceTextarea("consignesAvantMatch", f.consignesAvantMatch, "") + '</div>' +
+      fieldInput("scoreMiTemps", "Score à la mi-temps", f.scoreMiTemps, "1 - 0") +
+      '<div class="field"><label>Consignes à la mi-temps</label>' + voiceTextarea("consignesMiTemps", f.consignesMiTemps, "") + '</div>' +
+      '<div style="border-top:1px dashed #d7dcd3;margin:14px 0 10px"></div>' +
+      '<div class="field"><label>Objectif fixé pour ce match</label>' + voiceTextarea("objectifMatch", f.objectifMatch, "") + '</div>' +
+      resultPicker("objectifResultat", f.objectifResultat) +
+      '<div style="border-top:1px dashed #d7dcd3;margin:14px 0 10px"></div>' +
+      '<div class="field"><label>Comment j\'ai vécu ce match (au moins 10 lignes)</label>' + voiceTextarea("commentMatch", f.commentMatch, "Raconte ton match en détail...") + '</div>' +
+      '<div class="field"><label>Perspectives de travail pour la suite de la saison</label>' + voiceTextarea("perspectives", f.perspectives, "") + '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:10px 0 4px">Mon évaluation du match / 10</div>' + notePicker("noteJoueur", f.noteJoueur) +
+      '<div style="height:14px"></div><button class="btn btn-accent btn-block" onclick="saveMatchPlayerPart()">' + (mine ? "Mettre à jour" : "Enregistrer") + '</button>';
+  } else if (isAdmin) {
+    if (mine) {
+      html += readOnlyRows([["Dispositif", mine.dispositif], ["Composition", mine.compositionEquipe], ["Consignes avant match", mine.consignesAvantMatch], ["Score mi-temps", mine.scoreMiTemps], ["Consignes mi-temps", mine.consignesMiTemps]]) +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 2px"><span style="font-size:12px;font-weight:700;color:#5b6b5f">OBJECTIF DU MATCH</span>' + (mine.objectifResultat ? resultBadge(mine.objectifResultat) : "") + '</div>' +
+        '<div style="margin-bottom:8px">' + esc(mine.objectifMatch || "—") + '</div>' +
+        readOnlyRows([["Comment il/elle a vécu ce match", mine.commentMatch], ["Perspectives", mine.perspectives]]) +
+        (mine.noteJoueur != null ? '<div style="font-size:13px;color:#5b6b5f">Évaluation du joueur : ' + mine.noteJoueur + '/10</div>' : '');
+    } else {
+      html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px">Ce joueur n\'a pas encore rempli sa page de match.</div>';
+    }
+    html += '<div style="border-top:1px dashed #d7dcd3;margin:14px 0 10px"></div>' +
+      '<div class="field"><label>Ton commentaire</label>' + voiceTextarea("commentaireProf", f.commentaireProf, "") + '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:6px 0 4px">Ta note (responsable de la section) / 10</div>' + notePicker("noteProf", f.noteProf) +
+      '<div style="height:14px"></div><button class="btn btn-accent btn-block" onclick="saveMatchProfPart()">Enregistrer mon commentaire</button>';
+  } else {
+    html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette page est remplie par le joueur.</div>';
+    if (mine) {
+      html += readOnlyRows([["Dispositif", mine.dispositif], ["Composition", mine.compositionEquipe], ["Consignes avant match", mine.consignesAvantMatch], ["Score mi-temps", mine.scoreMiTemps], ["Consignes mi-temps", mine.consignesMiTemps]]) +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 2px"><span style="font-size:12px;font-weight:700;color:#5b6b5f">OBJECTIF DU MATCH</span>' + (mine.objectifResultat ? resultBadge(mine.objectifResultat) : "") + '</div>' +
+        '<div style="margin-bottom:8px">' + esc(mine.objectifMatch || "—") + '</div>' +
+        readOnlyRows([["Comment il/elle a vécu ce match", mine.commentMatch], ["Perspectives", mine.perspectives]]) +
+        (mine.noteJoueur != null ? '<div style="font-size:13px;color:#5b6b5f">Évaluation du joueur : ' + mine.noteJoueur + '/10</div>' : '');
+    } else {
+      html += '<div style="font-size:12px;color:var(--gris)">Ce joueur n\'a pas encore rempli sa page de match.</div>';
+    }
+  }
+
+  if (!isAdmin) {
+    html += '<div style="background:#f7f8f4;border-radius:8px;padding:10px;margin-top:12px;border:1px solid #e3e7de">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">NOTE ET COMMENTAIRE DU RESPONSABLE DE LA SECTION</div>';
+    if (mine && (mine.noteProf != null || mine.commentaireProf)) {
+      html += (mine.noteProf != null ? '<div style="font-size:15px;font-weight:800;color:var(--noir);margin-bottom:' + (mine.commentaireProf ? "6px" : "0") + '">' + mine.noteProf + '/10</div>' : '') +
+        (mine.commentaireProf ? '<div class="mini-row"><b>Commentaire : </b>' + esc(mine.commentaireProf) + '</div>' : '');
+    } else {
+      html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Pas encore de note ni de commentaire pour ce match.</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+function selectMatchSection(id) { App.matchSelectedId = id; draft._msInit = false; render(); }
+function saveMatchPlayerPart() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.bilans.find(function (b) { return b.matchId === App.matchSelectedId; });
+  var entry = Object.assign({ id: existing ? existing.id : uid(), matchId: App.matchSelectedId }, cleanDraft(), { commentaireProf: existing ? existing.commentaireProf : "", noteProf: existing ? existing.noteProf : null });
+  pdata.bilans = existing ? pdata.bilans.map(function (b) { return b.id === entry.id ? entry : b; }) : pdata.bilans.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+function saveMatchProfPart() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.bilans.find(function (b) { return b.matchId === App.matchSelectedId; });
+  var base = existing || { id: uid(), matchId: App.matchSelectedId, dispositif: "", compositionEquipe: "", consignesAvantMatch: "", scoreMiTemps: "", consignesMiTemps: "", objectifMatch: "", objectifResultat: "=", commentMatch: "", perspectives: "", noteJoueur: null };
+  var entry = Object.assign({}, base, { commentaireProf: draft.commentaireProf, noteProf: draft.noteProf });
+  pdata.bilans = existing ? pdata.bilans.map(function (b) { return b.id === entry.id ? entry : b; }) : pdata.bilans.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+
+/* ============ ONGLET HOOPER WEEK-END ============ */
+function scale5(name, label, value, disabled) {
+  var html = '<div style="margin-bottom:10px"><div style="font-size:13px;color:#334036;margin-bottom:4px">' + esc(label) + '</div><div style="display:flex;gap:6px">';
+  [1,2,3,4,5].forEach(function (n) {
+    var active = value === n;
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" class="scale-btn ' + (active ? "active" : "") + '">' + n + '</button>';
+  });
+  return html + '</div></div>';
+}
+function tabHooperWeekend(player, pdata, isAdmin, role) {
+  if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : todayIso(); }
+  var current = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
+  var blank = { sommeil: 3, doms: 3, mood: 3, fatigue: 3, faim: 3, infos: "", aJoueClub: "Oui", pointsForts: "", pointsFaibles: "", pointsAmeliorer: "", bilanNote: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
+  if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
+  var f = draft;
+  var canEditJoueur = isAdmin || role === "joueur";
+  var canEditCoach = isAdmin || role === "entraineur";
+  var score = f.sommeil + f.doms + f.mood + f.fatigue + f.faim;
+
+  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Partie joueur à remplir le lundi matin après le match du week-end. Partie entraîneur réservée au responsable de la section.</div>';
+  html += '<div class="card"><div class="field"><label>Date</label><input type="date" value="' + App.hooperWeekendDate + '" onchange="setHooperWeekendDate(this.value)"></div>' +
+    (current ? '<div style="font-size:11px;color:var(--rouge);font-weight:700">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '') + '</div>';
+
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">JOUEUR</div>';
+  if (canEditJoueur) {
+    html += scale5("sommeil", "Sommeil : as-tu bien dormi ?", f.sommeil) + scale5("doms", "DOMS : as-tu des courbatures ?", f.doms) + scale5("mood", "Mood : comment vas-tu ?", f.mood) +
+      scale5("fatigue", "Fatigue générale : te sens-tu fatigué ?", f.fatigue) + scale5("faim", "Faim : as-tu bien mangé ?", f.faim) +
+      '<div style="font-size:13px;font-weight:700;color:var(--noir);margin:6px 0 14px">Score Hooper : ' + score + '/25</div>' +
+      '<div class="field"><label>Informations à partager</label>' + voiceTextarea("infos", f.infos, "") + '</div>' +
+      ouiNonPicker("aJoueClub", "As-tu joué avec ton club ce week-end ?", f.aJoueClub) +
+      (f.aJoueClub === "Oui" ? '<div class="field"><label>Points forts</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div><div class="field"><label>Points faibles</label>' + voiceTextarea("pointsFaibles", f.pointsFaibles, "") + '</div>' : "") +
+      '<div class="field"><label>Points que tu aimerais améliorer</label>' + voiceTextarea("pointsAmeliorer", f.pointsAmeliorer, "") + '</div>' +
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
+  } else {
+    html += readOnlyRows([["Sommeil", f.sommeil + "/5"], ["DOMS", f.doms + "/5"], ["Mood", f.mood + "/5"], ["Fatigue", f.fatigue + "/5"], ["Faim", f.faim + "/5"], ["Infos", f.infos], ["A joué avec son club", f.aJoueClub], ["Points forts", f.pointsForts], ["À améliorer", f.pointsAmeliorer]]);
+  }
+  html += '</div>';
+
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">ÉDUCATEUR DU JOUEUR — à destination du responsable de la section</div>';
+  if (canEditCoach) {
+    html += '<div class="field"><label>Résumé du match du joueur</label>' + voiceTextarea("resumeMatchCoach", f.resumeMatchCoach, "Déroulé du match, temps de jeu, poste occupé, performance...") + '</div>' +
+      '<div class="field"><label>Commentaire divers</label>' + voiceTextarea("commentaireDivers", f.commentaireDivers, "") + '</div>' +
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
+  } else {
+    html += readOnlyRows([["Résumé", f.resumeMatchCoach], ["Commentaire", f.commentaireDivers]]) || '<div style="font-size:12px;color:var(--gris);font-style:italic">Pas encore rempli.</div>';
+  }
+  html += '</div>';
+
+  if (isAdmin) {
+    html += '<div class="card">' + fieldInput("bilanNote", "Bilan du professeur / 25", f.bilanNote, "20") +
+      '<div class="field"><label>Ta réponse à l\'éducateur (visible par lui)</label>' + voiceTextarea("reponseAdmin", f.reponseAdmin, "Merci pour ce retour...") + '</div>' +
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">Enregistrer</button></div>';
+  } else if (role === "entraineur") {
+    html += current && current.reponseAdmin
+      ? '<div class="card" style="background:var(--or-clair);border:1px solid var(--or-bord)"><div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">RÉPONSE DU RESPONSABLE DE LA SECTION</div><div style="font-size:13px;color:#334036">' + esc(current.reponseAdmin) + '</div></div>'
+      : '<div style="font-size:12px;color:var(--gris);font-style:italic;margin-bottom:10px">Pas encore de réponse du responsable de la section.</div>';
+  }
+  return html;
+}
+function setHooperWeekendDate(d) { App.hooperWeekendDate = d; draft._hwInit = false; render(); }
+function saveHooperWeekend() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var existing = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
+  var score = draft.sommeil + draft.doms + draft.mood + draft.fatigue + draft.faim;
+  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.hooperWeekendDate }, cleanDraft(), { score: score });
+  pdata.hooperLundi = existing ? pdata.hooperLundi.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.hooperLundi.concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
+}
+
+/* ============ ONGLET MEDICAL (mesures + blessures) ============ */
+function tabMedical(player, pdata, isAdmin, role) {
+  var canEdit = isAdmin || role === "joueur";
+  var html = '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Taille / poids</div>';
+  html += renderMesuresForm(pdata, canEdit, isAdmin);
+  html += '<div style="height:20px"></div><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Suivi des blessures</div>';
+  html += renderBlessuresForm(pdata, canEdit, isAdmin);
+  return html;
+}
+function renderMesuresForm(pdata, canEdit, isAdmin) {
+  var html = "";
+  if (canEdit) {
+    if (!App.mesShowAdd) html += '<button class="btn btn-accent btn-block" onclick="App.mesShowAdd=true; resetDraft({taille:\'\',poids:\'\'}); render()">+ Nouvelle mesure</button>';
+    else {
+      var f = draft;
+      var imc = "";
+      var t = parseFloat(f.taille) / 100, p = parseFloat(f.poids);
+      if (t > 0 && p > 0) imc = (p / (t * t)).toFixed(1);
+      html += '<div class="card"><div class="row">' + fieldInput("taille", "Taille (cm)", f.taille) + fieldInput("poids", "Poids (kg)", f.poids) + '</div>' +
+        (imc ? '<div style="font-size:13px;color:#5b6b5f;margin-bottom:12px">IMC calculé : <b>' + imc + '</b></div>' : '') +
+        '<div class="row"><button class="btn btn-ghost" onclick="App.mesShowAdd=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveMesure()">Enregistrer</button></div></div>';
+    }
+  } else if (!canEdit && !isAdmin) {
+    html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule.</div>';
+  }
+  var list = pdata.mesures.slice().reverse();
+  if (list.length === 0 && !App.mesShowAdd) html += '<div class="empty">Aucune mesure enregistrée.</div>';
+  list.forEach(function (e) {
+    html += '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(e.date) + '</span>' +
+      (isAdmin ? '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deleteMesure(\'' + e.id + '\')">Suppr.</button>' : '') + '</div>' +
+      '<div style="font-size:13px;color:#334036">Taille : ' + esc(e.taille || "—") + ' cm · Poids : ' + esc(e.poids || "—") + ' kg · IMC : ' + esc(e.imc || "—") + '</div></div>';
+  });
+  return html;
+}
+function saveMesure() {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  var t = parseFloat(draft.taille) / 100, p = parseFloat(draft.poids), imc = (t > 0 && p > 0) ? (p / (t * t)).toFixed(1) : "";
+  pdata.mesures.push({ id: uid(), date: todayIso(), taille: draft.taille, poids: draft.poids, imc: imc });
+  savePlayerData(pid, pdata);
+  App.mesShowAdd = false;
+  render();
+}
+function deleteMesure(id) {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  pdata.mesures = pdata.mesures.filter(function (e) { return e.id !== id; });
+  savePlayerData(pid, pdata);
+  render();
+}
+
+function renderBlessuresForm(pdata, canEdit, isAdmin) {
+  var html = '<div style="background:#fbe7e4;border-radius:10px;padding:12px;font-size:12px;color:#a33323;margin-bottom:14px">Les dates de début et de fin d\'arrêt sont visibles par le joueur et son entraîneur de club. Le détail des soins reste réservé à l\'administrateur.</div>';
+  if (canEdit) {
+    if (!App.blShowAdd) html += '<button class="btn btn-accent btn-block" onclick="App.blShowAdd=true; resetDraft({dateDebut: todayIso(), dateFin: \'\', description: \'\'}); render()">+ Signaler une blessure</button>';
+    else {
+      var f = draft;
+      html += '<div class="card">' + fieldInput("dateDebut", "Date de début d'arrêt", f.dateDebut, "", "date") + fieldInput("dateFin", "Date de fin d'arrêt (si connue)", f.dateFin, "", "date") +
+        '<div class="field"><label>Description</label>' + voiceTextarea("description", f.description, "") + '</div>' +
+        '<div class="row"><button class="btn btn-ghost" onclick="App.blShowAdd=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveBlessure()">Enregistrer</button></div></div>';
+    }
+  } else if (!isAdmin) {
+    html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule.</div>';
+  }
+  var list = pdata.blessures.slice().reverse();
+  if (list.length === 0 && !App.blShowAdd) html += '<div class="empty">Aucune blessure signalée.</div>';
+  list.forEach(function (e) {
+    var editing = App.blEditingId === e.id;
+    html += '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:700;color:' + (e.dateFin ? "#2b6b1f" : "#a33323") + '">' + (e.dateFin ? "Blessure — arrêt jusqu'au " + e.dateFin : "Blessure — arrêt en cours") + '</span>' +
+      (isAdmin ? '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deleteBlessure(\'' + e.id + '\')">Suppr.</button>' : '') + '</div>' +
+      '<div style="background:#f7f8f4;border-radius:8px;padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--noir)"><span>Début : ' + esc(e.dateDebut) + '</span><span>Fin : ' + esc(e.dateFin || "non déterminée") + '</span></div></div>' +
+      '<div class="mini-row"><b>Description : </b>' + esc(e.description || "—") + '</div>' +
+      (e.soins || isAdmin ? '<div class="mini-row"><b>Soins : </b>' + esc(e.soins || "—") + '</div>' : "") +
+      (e.professionnel || isAdmin ? '<div class="mini-row"><b>Professionnel consulté : </b>' + esc(e.professionnel || "—") + '</div>' : "") +
+      (e.protocoleReprise || isAdmin ? '<div class="mini-row"><b>Protocole de reprise : </b>' + esc(e.protocoleReprise || "—") + '</div>' : "");
+    if (isAdmin && !editing) html += '<button style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:13px;cursor:pointer;margin-top:8px" onclick="startBlessureEdit(\'' + e.id + '\')">Compléter le suivi</button>';
+    if (isAdmin && editing) {
+      var ef = draft;
+      html += '<div style="margin-top:10px;border-top:1px dashed #d7dcd3;padding-top:10px">' + fieldInput("dateFin", "Date de fin d'arrêt", ef.dateFin, "", "date") +
+        '<div class="field"><label>Soins</label>' + voiceTextarea("soins", ef.soins, "") + '</div>' +
+        fieldInput("professionnel", "Professionnel consulté", ef.professionnel) +
+        '<div class="field"><label>Protocole de reprise</label>' + voiceTextarea("protocoleReprise", ef.protocoleReprise, "") + '</div>' +
+        '<div class="row"><button class="btn btn-ghost" onclick="App.blEditingId=null; render()">Annuler</button><button class="btn btn-accent" onclick="saveBlessureEdit(\'' + e.id + '\')">Enregistrer</button></div></div>';
+    }
+    html += '</div>';
+  });
+  return html;
+}
+function saveBlessure() {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  pdata.blessures.push({ id: uid(), dateDebut: draft.dateDebut, dateFin: draft.dateFin, description: draft.description, soins: "", professionnel: "", protocoleReprise: "", autre: "" });
+  savePlayerData(pid, pdata);
+  App.blShowAdd = false;
+  render();
+}
+function startBlessureEdit(id) {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  var e = pdata.blessures.find(function (x) { return x.id === id; });
+  resetDraft(e);
+  App.blEditingId = id;
+  render();
+}
+function saveBlessureEdit(id) {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  pdata.blessures = pdata.blessures.map(function (e) { return e.id === id ? Object.assign({}, e, cleanDraft()) : e; });
+  savePlayerData(pid, pdata);
+  App.blEditingId = null;
+  render();
+}
+function deleteBlessure(id) {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  pdata.blessures = pdata.blessures.filter(function (e) { return e.id !== id; });
+  savePlayerData(pid, pdata);
+  render();
+}
+
+/* ============ ONGLET TESTS + SEMESTRIELS ============ */
+function tabTests(player, pdata, isAdmin, role) {
+  var canEdit = isAdmin || role === "joueur";
+  var html = '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Tests physiques et techniques</div>';
+  if (canEdit) {
+    if (!App.testShowAdd) html += '<button class="btn btn-accent btn-block" onclick="startTestAdd()">+ Nouvelle session de tests</button>';
+    else {
+      var rows = draft.rows || {};
+      var total = 0;
+      html += '<div class="card">';
+      TEST_DEFS.forEach(function (t) {
+        var r = rows[t.key] || { valeur: "", note: "" };
+        total += parseFloat(r.note) || 0;
+        html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><div style="flex:1;font-size:13px;color:#334036">' + esc(t.label) + '</div>' +
+          '<input type="text" style="width:70px" value="' + esc(r.valeur) + '" placeholder="Valeur" oninput="setTestRow(\'' + t.key + '\',\'valeur\',this.value)">' +
+          '<input type="text" style="width:50px" value="' + esc(r.note) + '" placeholder="/20" oninput="setTestRow(\'' + t.key + '\',\'note\',this.value); render()"></div>';
+      });
+      html += '<div style="font-size:13px;font-weight:700;color:var(--noir);margin-bottom:12px">Total : ' + total + '/' + (TEST_DEFS.length * 20) + '</div>' +
+        '<div class="row"><button class="btn btn-ghost" onclick="App.testShowAdd=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveTestSession()">Enregistrer</button></div></div>';
+    }
+  } else html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule.</div>';
+  var tlist = pdata.tests.slice().reverse();
+  if (tlist.length === 0 && !App.testShowAdd) html += '<div class="empty">Aucune session de tests enregistrée.</div>';
+  tlist.forEach(function (e) {
+    html += '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:var(--gris)">' + fmtShort(e.date) + '</span>' +
+      '<span style="font-weight:800;color:var(--noir)">' + e.total + '/' + (TEST_DEFS.length * 20) + '</span></div>';
+    TEST_DEFS.forEach(function (t) {
+      var r = e.rows[t.key];
+      if (r && (r.valeur || r.note)) html += '<div style="display:flex;justify-content:space-between;font-size:13px;color:#334036;padding:3px 0"><span>' + esc(t.label) + '</span><span>' + esc(r.valeur) + (r.note ? " — " + esc(r.note) + "/20" : "") + '</span></div>';
+    });
+    html += '</div>';
+  });
+
+  html += '<div style="height:20px"></div><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Évaluations semestrielles</div>';
+  var PERIODES = ["4ème - S1", "4ème - S2", "3ème - S1", "3ème - S2"];
+  if (canEdit) {
+    if (!App.semShowAdd) html += '<button class="btn btn-accent btn-block" onclick="App.semShowAdd=true; resetDraft({periode:PERIODES[0],appreciation:\'\',note:\'\'}); render()">+ Nouvelle évaluation semestrielle</button>';
+    else {
+      var sf = draft;
+      html += '<div class="card"><div class="field"><label>Période</label><select id="f-periode" oninput="draftSet(\'periode\', this.value)">' +
+        PERIODES.map(function (p) { return '<option ' + (sf.periode === p ? "selected" : "") + '>' + p + '</option>'; }).join("") + '</select></div>' +
+        '<div class="field"><label>Appréciation</label>' + voiceTextarea("appreciation", sf.appreciation, "") + '</div>' +
+        fieldInput("note", "Note / 20", sf.note, "14") +
+        '<div class="row"><button class="btn btn-ghost" onclick="App.semShowAdd=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveSemestriel()">Enregistrer</button></div></div>';
+    }
+  } else html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule.</div>';
+  var slist = pdata.semestriels.slice().reverse();
+  if (slist.length === 0 && !App.semShowAdd) html += '<div class="empty">Aucune évaluation semestrielle pour l\'instant.</div>';
+  slist.forEach(function (e) {
+    html += '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><b>' + esc(e.periode) + '</b>' + (e.note !== "" ? '<span style="font-weight:800;color:var(--noir)">' + esc(e.note) + '/20</span>' : "") + '</div>' +
+      (e.appreciation ? '<div style="font-size:14px;color:#334036">' + esc(e.appreciation) + '</div>' : "") + '</div>';
+  });
+  return html;
+}
+function startTestAdd() {
+  var rows = {}; TEST_DEFS.forEach(function (t) { rows[t.key] = { valeur: "", note: "" }; });
+  resetDraft({ rows: rows });
+  App.testShowAdd = true;
+  render();
+}
+function setTestRow(key, field, val) { draft.rows[key][field] = val; }
+function saveTestSession() {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  var total = 0;
+  TEST_DEFS.forEach(function (t) { total += parseFloat(draft.rows[t.key].note) || 0; });
+  pdata.tests.push({ id: uid(), date: todayIso(), rows: draft.rows, total: total });
+  savePlayerData(pid, pdata);
+  App.testShowAdd = false;
+  render();
+}
+function saveSemestriel() {
+  var pid = App.activePlayerId, pdata = getPlayerData(pid);
+  pdata.semestriels.push({ id: uid(), periode: draft.periode, appreciation: draft.appreciation, note: draft.note });
+  savePlayerData(pid, pdata);
+  App.semShowAdd = false;
+  render();
+}
+
+/* ============ ECRAN CLUB (vue éducateur) ============ */
+function screenClubHome() {
+  var clubs = clubsFromPlayers();
+  var club = clubs.find(function (c) { return c.club === App.activeClub; }) || { club: App.activeClub, players: [] };
+  var html = '<div class="header"><div><div class="title">' + esc(club.club) + '</div><div class="sub">Vue éducateur de club</div></div>' +
+    '<button class="btn-header" onclick="exitClub()">Quitter</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg)">' +
+    '<div style="font-size:12px;color:var(--gris);margin-bottom:12px">' + club.players.length + ' joueur' + (club.players.length > 1 ? "s" : "") + ' du Sport-Études suivi' + (club.players.length > 1 ? "s" : "") + ' dans votre club.</div>';
+  club.players.slice().sort(byNomPrenom).forEach(function (p) {
+    html += '<div onclick="App.roleChoice=\'entraineur\'; openPlayer(\'' + p.id + '\', false)" style="background:#fff;border:1px solid #e3e7de;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
+      '<div><div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(p.classe || p.groupe) + '</div></div>' +
+      '<span style="color:var(--rouge);font-size:18px">›</span></div>';
+  });
+  html += '</div>';
+  return html;
+}
+function exitClub() { App.activeClub = null; App.code = ""; nav("welcome"); }
+
+/* ============ ESPACE ADMIN : ACCUEIL ============ */
+function screenAdminHome() {
+  var filtered = players.filter(function (p) { return (p.prenom + " " + p.nom).toLowerCase().indexOf((App.search || "").toLowerCase()) !== -1; });
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  var clubs = clubsFromPlayers();
+
+  var html = '<div class="header"><div class="title">Administration</div><button class="btn-header" onclick="nav(\'welcome\')">Quitter</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminPlanning\')">📅 Voir / modifier le planning</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminInfos\')">📋 Infos, documents, projet & charte</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (par semaine, répondre)</button><div style="height:16px"></div>';
+
+  if (clubs.length > 0) {
+    html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Codes entraîneurs (par club)</div>';
+    clubs.forEach(function (c) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee">' +
+        '<div style="font-size:13px"><div style="font-weight:700;color:#1C2620">' + esc(c.club) + '</div><div style="font-size:11px;color:var(--gris)">' + c.players.length + ' joueur' + (c.players.length > 1 ? "s" : "") + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(c.code || "…") + '</span>' +
+        '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateClubCode(\'' + esc(c.club).replace(/'/g, "\\'") + '\')">Régénérer</button></div></div>';
+    });
+    html += '<div style="font-size:11px;color:var(--gris);margin-top:8px">Ce code donne accès à tous les joueurs du club.</div></div>';
+  } else {
+    html += '<div style="font-size:12px;color:var(--gris);margin-bottom:14px">Aucun code entraîneur pour l\'instant : renseigne le club d\'un joueur (onglet Identité) pour en générer un.</div>';
+  }
+
+  html += '<input type="text" style="margin-bottom:14px" placeholder="Rechercher un joueur..." value="' + esc(App.search) + '" oninput="App.search=this.value; render()">';
+
+  html += '<div class="card">';
+  if (!App.showAddPlayer) html += '<button class="btn btn-accent btn-block" onclick="App.showAddPlayer=true; resetDraft({prenom:\'\',nom:\'\',groupe:groups[0]||\'Groupe 1\'}); render()">+ Ajouter un joueur</button>';
+  else {
+    var f = draft;
+    html += fieldInput("prenom", "Prénom", f.prenom) + fieldInput("nom", "Nom", f.nom) +
+      '<div class="field"><label>Groupe</label><select id="f-groupe" oninput="draftSet(\'groupe\', this.value)">' +
+      Array.from(new Set(groups.concat(["Groupe 1", "Groupe 2"]))).map(function (g) { return '<option ' + (f.groupe === g ? "selected" : "") + '>' + g + '</option>'; }).join("") + '</select></div>' +
+      '<div class="row"><button class="btn btn-ghost" onclick="App.showAddPlayer=false; render()">Annuler</button><button class="btn btn-accent" onclick="addPlayer()">Ajouter</button></div>';
+  }
+  html += '</div>';
+
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px">' + esc(g) + '</div>';
+    filtered.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      html += '<div style="background:#fff;border:1px solid #e3e7de;border-radius:10px;padding:12px 14px;margin-bottom:8px">' +
+        '<div onclick="openPlayer(\'' + p.id + '\', true)" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
+        '<div><div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(p.poste || "Poste non renseigné") + '</div></div>' +
+        '<div style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(p.code) + '</div></div>' +
+        '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0ec;text-align:right">';
+      if (App.confirmDeletePlayerId === p.id) {
+        html += '<span style="font-size:12px"><span style="color:#a33323;margin-right:8px">Supprimer définitivement ' + esc(p.prenom) + ' ?</span>' +
+          '<button style="border:none;background:none;color:#5b6b5f;font-size:12px;cursor:pointer;margin-right:10px" onclick="App.confirmDeletePlayerId=null; render()">Annuler</button>' +
+          '<button style="border:none;background:none;color:#B3412E;font-weight:700;font-size:12px;cursor:pointer" onclick="deletePlayer(\'' + p.id + '\')">Confirmer</button></span>';
+      } else {
+        html += '<button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="App.confirmDeletePlayerId=\'' + p.id + '\'; render()">Supprimer ce joueur</button>';
+      }
+      html += '</div></div>';
+    });
+  });
+
+  html += '</div>';
+  return html;
+}
+function regenerateClubCode(club) { info.clubCodes[club] = generateCode(club); saveInfo(); render(); }
+function addPlayer() {
+  if (!draft.prenom || !draft.nom) return;
+  players.push({
+    id: "p" + uid(), nom: draft.nom, prenom: draft.prenom, groupe: draft.groupe,
+    classe: "", poste: "", club: "", entraineur: "", telEntraineur: "", telPerso: "", telParents: "", email: "", dateNaissance: "",
+    code: generateCode(draft.prenom),
+  });
+  savePlayers();
+  App.showAddPlayer = false;
+  render();
+}
+function deletePlayer(id) {
+  players = players.filter(function (p) { return p.id !== id; });
+  savePlayers();
+  savePlayerData(id, emptyPlayerData());
+  App.confirmDeletePlayerId = null;
+  render();
+}
+
+function screenAdminPlanning() {
+  return '<div class="header"><div class="title">Planning annuel</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' + tabPlanning(true) + '</div>';
+}
+function screenAdminInfos() {
+  return '<div class="header"><div class="title">Infos, documents, projet & charte</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' + tabGeneral(true) + '</div>';
+}
+
+/* ============ OUTILS GROUPES ADMIN ============ */
+function loadAllPlayerData() {
+  var map = {};
+  players.forEach(function (p) { map[p.id] = getPlayerData(p.id); });
+  return map;
+}
+
+/* ---- Vue groupée : Semaine ---- */
+function openBulkSemaine() {
+  App.bulk.data = loadAllPlayerData();
+  App.bulk.weekStart = SCHOOL_WEEKS[currentSchoolWeekIndex()][0];
+  nav("adminBulkSemaine");
+}
+function screenAdminBulkSemaine() {
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
+  var html = '<div class="header"><div class="title">Évaluation de la semaine — Groupe</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Semaine</div><div class="pill-row">' +
+    SCHOOL_WEEKS.map(function (w) { return '<button class="pill ' + (App.bulk.weekStart === w[0] ? "active" : "") + '" onclick="setBulkWeek(\'' + w[0] + '\')">' + weekLabel(w) + '</button>'; }).join("") + '</div></div>';
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 2px 6px">' + esc(g) + '</div>';
+    players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      var pdata = App.bulk.data[p.id];
+      var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+      html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:10px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>' +
+        '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "perfJoueur", entry.perfJoueur) + '</div>' +
+        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "perfCoach", entry.perfCoach) + '</div></div></div>' +
+        '<div><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "investJoueur", entry.investJoueur) + '</div>' +
+        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "investCoach", entry.investCoach) + '</div></div></div></div>';
+    });
+  });
+  html += '</div>';
+  return html;
+}
+function setBulkWeek(w) { App.bulk.weekStart = w; render(); }
+function bulkGrade(playerId, field, value) {
+  return '<div style="display:flex;gap:6px">' + ["A","B","C","D"].map(function (g) {
+    var gi = GRADE_INFO[g], active = value === g;
+    return '<button type="button" onclick="setBulkGrade(\'' + playerId + '\',\'' + field + '\',\'' + g + '\',' + (active ? "true" : "false") + ')" class="grade-btn" style="cursor:pointer;border:' +
+      (active ? "2px solid " + gi.c : "1px solid #d7dcd3") + ';background:' + (active ? gi.bg : "#fff") + ';color:' + (active ? gi.c : "#8b9186") + '">' + g + '</button>';
+  }).join("") + '</div>';
+}
+function setBulkGrade(playerId, field, val, wasActive) {
+  var pdata = App.bulk.data[playerId];
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
+  var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; });
+  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null }; pdata.semaines.push(entry); }
+  entry[field] = wasActive ? null : val;
+  savePlayerData(playerId, pdata);
+  render();
+}
+
+/* ---- Vue groupée : Match ---- */
+function openBulkMatch() {
+  App.bulk.data = loadAllPlayerData();
+  App.bulk.matchId = null;
+  App.bulk.matchForm = { date: todayIso(), adversaire: "", scoreFinal: "" };
+  nav("adminBulkMatch");
+}
+function screenAdminBulkMatch() {
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  var recent = matches.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  var html = '<div class="header"><div class="title">Bilan de match</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+
+  if (recent.length > 0) {
+    html += '<div class="card"><div style="font-size:13px;font-weight:800;color:var(--noir);margin-bottom:10px">Historique des matchs de la section</div>';
+    recent.forEach(function (m) {
+      var nb = Object.values(App.bulk.data).filter(function (pd) { return pd.bilans.some(function (b) { return b.matchId === m.id && b.appreciationJoueur; }); }).length;
+      html += '<div onclick="selectBulkMatch(\'' + m.id + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #eee;cursor:pointer;background:' + (App.bulk.matchId === m.id ? "var(--or-clair)" : "transparent") + '">' +
+        '<div><div style="font-size:13px;font-weight:700;color:var(--noir)">' + fmtShort(m.date) + ' · vs ' + esc(m.adversaire || "?") + '</div><div style="font-size:11px;color:var(--gris)">' + nb + ' joueur' + (nb > 1 ? "s ont" : " a") + ' donné son appréciation</div></div>' +
+        '<div style="font-weight:800;color:var(--rouge);font-size:14px">' + esc(m.scoreFinal || "—") + '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  var f = App.bulk.matchForm;
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Constat global (collectif)</div>' +
+    '<div class="row">' + bulkFieldInput("date", "Date", f.date, "", "date") + bulkFieldInput("adversaire", "Adversaire", f.adversaire) + '</div>' +
+    bulkFieldInput("scoreFinal", "Score final", f.scoreFinal, "2 - 1") +
+    '<button class="btn btn-accent btn-block" onclick="saveBulkMatch()">' + (App.bulk.matchId ? "Mettre à jour le match" : "Créer le match") + '</button>';
+  if (App.bulk.matchId) {
+    html += '<div style="margin-top:10px;text-align:center"><button style="border:none;background:none;color:#B3412E;font-size:12px;cursor:pointer" onclick="deleteBulkMatch()">Supprimer ce match (mal créé)</button></div>';
+  }
+  html += '</div>';
+
+  if (App.bulk.matchId) {
+    html += '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:16px 2px 6px">Appréciations (l\'appréciation du joueur apparaît une fois donnée)</div>';
+    groups.forEach(function (g) {
+      html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
+      players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+        var pdata = App.bulk.data[p.id];
+        var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { appreciationJoueur: "", noteJoueur: null, commentaireProf: "", noteProf: null };
+        html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:8px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>';
+        if (entry.appreciationJoueur) html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#334036">' + esc(entry.appreciationJoueur) + (entry.noteJoueur != null ? ' <b>(' + entry.noteJoueur + '/10)</b>' : "") + '</div>';
+        else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore donné son appréciation.</div>';
+        html += '<div class="voice-wrap"><textarea placeholder="Ton commentaire" oninput="setBulkComment(\'' + p.id + '\',\'commentaireProf\',this.value)">' + esc(entry.commentaireProf) + '</textarea></div>' +
+          '<div style="font-size:11px;color:var(--gris);margin:8px 0 4px">Note / 10</div>' +
+          '<div style="display:flex;gap:4px;flex-wrap:wrap">' + Array.from({ length: 11 }, function (_, n) { return n; }).map(function (n) {
+            var active = entry.noteProf === n;
+            return '<button type="button" onclick="setBulkComment(\'' + p.id + '\',\'noteProf\',' + n + ')" style="width:30px;height:30px;border-radius:6px;font-size:12px;font-weight:700;border:' + (active ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (active ? "var(--or-clair)" : "#fff") + ';color:' + (active ? "var(--noir)" : "#8b9186") + ';cursor:pointer">' + n + '</button>';
+          }).join("") + '</div></div>';
+      });
+    });
+  } else {
+    html += '<div style="font-size:12px;color:var(--gris);text-align:center;padding:16px">Crée d\'abord le match ci-dessus pour pouvoir saisir les appréciations.</div>';
+  }
+  html += '</div>';
+  return html;
+}
+function bulkFieldInput(name, label, value, placeholder, type) {
+  return '<div class="field"><label>' + esc(label) + '</label><input type="' + (type || "text") + '" value="' + esc(value || "") + '" placeholder="' + esc(placeholder || "") + '" oninput="App.bulk.matchForm.' + name + '=this.value"></div>';
+}
+function selectBulkMatch(id) {
+  var m = matches.find(function (x) { return x.id === id; });
+  App.bulk.matchId = id;
+  App.bulk.matchForm = { date: m.date, adversaire: m.adversaire, scoreFinal: m.scoreFinal };
+  render();
+}
+function saveBulkMatch() {
+  var f = App.bulk.matchForm;
+  if (App.bulk.matchId) {
+    matches = matches.map(function (m) { return m.id === App.bulk.matchId ? Object.assign({}, m, f) : m; });
+  } else {
+    var m = { id: uid(), date: f.date, adversaire: f.adversaire, scoreFinal: f.scoreFinal };
+    matches.push(m);
+    App.bulk.matchId = m.id;
+  }
+  saveMatches();
+  render();
+}
+function deleteBulkMatch() {
+  matches = matches.filter(function (m) { return m.id !== App.bulk.matchId; });
+  saveMatches();
+  App.bulk.matchId = null;
+  App.bulk.matchForm = { date: todayIso(), adversaire: "", scoreFinal: "" };
+  render();
+}
+function setBulkComment(playerId, field, value) {
+  var pdata = App.bulk.data[playerId];
+  var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; });
+  if (!entry) { entry = { id: uid(), matchId: App.bulk.matchId, appreciationJoueur: "", noteJoueur: null, commentaireProf: "", noteProf: null }; pdata.bilans.push(entry); }
+  entry[field] = value;
+  savePlayerData(playerId, pdata);
+  if (field === "noteProf") render();
+}
+
+/* ---- Vue en direct (par date / dernières entrées) ---- */
+function openBulkDate(type) {
+  App.bulk.data = loadAllPlayerData();
+  App.bulk.dateType = type;
+  App.bulk.date = todayIso();
+  App.bulk.mode = "latest";
+  nav("adminBulkDate");
+}
+var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (w-e)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
+function screenAdminBulkDate() {
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  var html = '<div class="header"><div class="title">Vue en direct — tous les joueurs</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+  html += '<div class="card"><div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
+    BULK_DATE_TYPES.map(function (t) { return '<button class="pill ' + (App.bulk.dateType === t[0] ? "active" : "") + '" style="flex:1 1 30%" onclick="setBulkDateType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>' +
+    '<div class="row" style="margin-bottom:' + (App.bulk.mode === "date" ? "10px" : "0") + '">' +
+    ['latest', 'date'].map(function (m) {
+      var label = m === "latest" ? "Dernières entrées" : "Par date précise";
+      return '<button class="pill ' + (App.bulk.mode === m ? "active" : "") + '" onclick="setBulkMode(\'' + m + '\')">' + label + '</button>';
+    }).join("") + '</div>';
+  if (App.bulk.mode === "date") html += '<div class="field"><label>Date</label><input type="date" value="' + App.bulk.date + '" onchange="App.bulk.date=this.value; render()"></div>';
+  html += '</div>';
+
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
+    players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:6px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
+    });
+  });
+  html += '</div>';
+  return html;
+}
+function setBulkDateType(t) { App.bulk.dateType = t; render(); }
+function setBulkMode(m) { App.bulk.mode = m; render(); }
+function renderBulkDateEntry(pdata, playerId) {
+  var type = App.bulk.dateType, mode = App.bulk.mode, date = App.bulk.date;
+  function pick(list) { return mode === "latest" ? latestOf(list) : list.find(function (e) { return e.date === date; }); }
+  if (type === "seance") {
+    var obj = pick(pdata.objectifs);
+    var ress = mode === "latest" ? latestOf(pdata.ressenti) : pdata.ressenti.filter(function (e) { return e.date === date; })[0];
+    if (!obj && !ress) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    var html = "";
+    if (obj) html += '<div style="font-size:12px;color:#334036;margin-bottom:6px"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>Objectif</b> — ' + esc(obj.theme || "(sans thème)") + ' · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) + '</div>';
+    if (ress) html += '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(ress.date) + '</span> — <b>' + (ress.moment === "avant" ? "Avant" : "Après") + '</b> ' + (ress.moment === "avant" ? ("forme " + ress.forme + "/10, sommeil " + ress.sommeil + "/10") : ("charge " + ress.charge + "/10, plaisir " + ress.plaisir + "/10" + (ress.appreciation ? " — " + esc(ress.appreciation) : ""))) + '</div>';
+    return html;
+  }
+  if (type === "hooperJeudi") {
+    var e = pick(pdata.ficheVendredi);
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Sommeil ' + e.sommeil + '/10 · Forme ' + e.etatForme + '/10 · Confiance ' + e.confiance + '/10</div>' +
+      (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
+      '<div style="font-weight:700;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div></div>';
+  }
+  if (type === "hooperWeekend") {
+    var e = pick(pdata.hooperLundi);
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score Hooper : <b>' + e.score + '/25</b></div>';
+    if (e.resumeMatchCoach || e.commentaireDivers) {
+      html += '<div style="margin-top:4px;background:var(--or-clair);border:1px solid var(--or-bord);border-radius:6px;padding:6px"><div style="font-size:10px;font-weight:700;color:var(--rouge)">ÉDUCATEUR</div>' +
+        (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") +
+        '<div style="font-size:10px;font-weight:700;color:var(--noir);margin-top:8px">TA RÉPONSE</div>' +
+        '<div class="voice-wrap"><textarea style="min-height:45px;font-size:12px" oninput="setBulkHooperReponse(\'' + playerId + '\',\'' + e.id + '\',this.value)">' + esc(e.reponseAdmin || "") + '</textarea></div></div>';
+    } else html += '<div style="margin-top:4px;font-size:11px;color:var(--gris);font-style:italic">Pas encore d\'appréciation de l\'éducateur.</div>';
+    return html + '</div>';
+  }
+  if (type === "medical") {
+    var e = pick(pdata.mesures);
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune mesure.</div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Taille ' + esc(e.taille || "—") + ' cm · Poids ' + esc(e.poids || "—") + ' kg · IMC ' + esc(e.imc || "—") + '</div></div>';
+  }
+  if (type === "tests") {
+    var e = pick(pdata.tests);
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucun test.</div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div><b>Total : ' + e.total + '/' + (TEST_DEFS.length * 20) + '</b></div></div>';
+  }
+  if (type === "blessures") {
+    var list = pdata.blessures;
+    var e = mode === "latest" ? list.slice().sort(function (a, b) { return a.dateDebut < b.dateDebut ? 1 : -1; })[0] : list.find(function (x) { return x.dateDebut === date; });
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune blessure.</div>';
+    return '<div style="font-size:12px;color:#334036"><div style="font-weight:700;color:' + (e.dateFin ? "#2b6b1f" : "#a33323") + '">' + (e.dateFin ? "Arrêt du " + e.dateDebut + " au " + e.dateFin : "Arrêt en cours depuis le " + e.dateDebut) + '</div>' + (e.description ? '<div>' + esc(e.description) + '</div>' : "") + '</div>';
+  }
+  return "";
+}
+function setBulkHooperReponse(playerId, entryId, value) {
+  var pdata = App.bulk.data[playerId];
+  pdata.hooperLundi = pdata.hooperLundi.map(function (e) { return e.id === entryId ? Object.assign({}, e, { reponseAdmin: value }) : e; });
+  savePlayerData(playerId, pdata);
+}
+
+/* ---- Avis des éducateurs (par semaine) ---- */
+function openEducateurAvis() {
+  App.bulk.data = loadAllPlayerData();
+  nav("adminEducateurAvis");
+}
+function screenAdminEducateurAvis() {
+  var items = [];
+  players.forEach(function (p) {
+    var pdata = App.bulk.data[p.id];
+    pdata.hooperLundi.forEach(function (e) {
+      if (e.resumeMatchCoach || e.commentaireDivers) items.push({ player: p, entry: e });
+    });
+  });
+  items.sort(function (a, b) { return a.entry.date < b.entry.date ? 1 : -1; });
+  var weekGroups = [];
+  items.forEach(function (item) {
+    var ws = mondayOf(item.entry.date), we = sundayOf(item.entry.date);
+    var group = weekGroups.find(function (g) { return g.weekStart === ws; });
+    if (!group) { group = { weekStart: ws, weekEnd: we, items: [] }; weekGroups.push(group); }
+    group.items.push(item);
+  });
+
+  var html = '<div class="header"><div class="title">Avis des éducateurs</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' +
+    '<div class="card-gold" style="border-radius:10px;padding:12px"><div style="font-size:12px;color:#7A1420">Tous les avis laissés par les éducateurs, classés par semaine. Réponds directement ici.</div></div>';
+
+  if (weekGroups.length === 0) html += '<div class="empty">Aucun avis d\'éducateur pour l\'instant.</div>';
+  weekGroups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:800;color:var(--noir);margin:14px 2px 8px;text-transform:uppercase">Semaine du ' + fmtShort(g.weekStart) + ' au ' + fmtShort(g.weekEnd) + '</div>';
+    g.items.forEach(function (item) {
+      var p = item.player, e = item.entry;
+      html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+        '<div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</div></div>' +
+        '<div style="background:#f7f8f4;border-radius:8px;padding:8px;font-size:13px;color:#334036;margin-bottom:8px">' +
+        (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") + '</div>' +
+        '<div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">TA RÉPONSE</div>' +
+        '<div class="voice-wrap"><textarea style="min-height:50px" oninput="setBulkHooperReponse(\'' + p.id + '\',\'' + e.id + '\',this.value)">' + esc(e.reponseAdmin || "") + '</textarea></div></div>';
+    });
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ============ ECRAN : ACCUEIL ============ */
+function screenWelcome() {
+  return '' +
+    '<div class="logo-header">' +
+      '<div class="emoji">⚽</div>' +
+      '<div class="app-title">SUIVI SPORT-ÉTUDES</div>' +
+      '<div class="app-sub">Collège Jean Moulin — Gacé</div>' +
+    '</div>' +
+    '<div style="padding:0 24px 30px">' +
+      '<div class="row" style="margin-bottom:18px">' +
+        '<button class="pill ' + (App.roleChoice === "joueur" ? "active" : "") + '" style="flex:1" onclick="setRoleChoice(\'joueur\')">Joueur</button>' +
+        '<button class="pill ' + (App.roleChoice === "entraineur" ? "active" : "") + '" style="flex:1" onclick="setRoleChoice(\'entraineur\')">Éducateur</button>' +
+      '</div>' +
+      '<div class="field"><label>Code d\'accès (joueur, ou code club pour un éducateur)</label>' +
+        '<input type="text" id="code-input" style="text-transform:uppercase;letter-spacing:1px" placeholder="Ex : Arnold1234 ou Argentan5678" value="' + esc(App.code) + '" oninput="App.code=this.value">' +
+      '</div>' +
+      (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
+      '<button class="btn btn-accent btn-block" onclick="submitCode()">Accéder à la fiche</button>' +
+      '<div class="center" style="margin:22px 0 6px;font-size:12px;color:#c3c8bd">— — —</div>' +
+      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:8px" onclick="nav(\'adminLogin\')">Accès administrateur (Antoine)</button>' +
+    '</div>';
+}
+function setRoleChoice(r) { App.roleChoice = r; render(); }
+function submitCode() {
+  var entered = (App.code || "").trim().toUpperCase();
+  var player = players.find(function (p) { return p.code.toUpperCase() === entered; });
+  if (player) {
+    App.error = "";
+    App.roleChoice = "joueur";
+    App.activePlayerId = player.id;
+    nav("player");
+    return;
+  }
+  var clubs = clubsFromPlayers();
+  var club = clubs.find(function (c) { return c.code && c.code.toUpperCase() === entered; });
+  if (club) {
+    App.error = "";
+    App.roleChoice = "entraineur";
+    App.activeClub = club.club;
+    nav("clubHome");
+    return;
+  }
+  App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
+  render();
+}
+
+function screenAdminLogin() {
+  return '<div class="logo-header"><div class="emoji">⚽</div><div class="app-title">SUIVI SPORT-ÉTUDES</div></div>' +
+    '<div style="padding:0 24px 30px">' +
+      '<div class="field"><label>Code administrateur</label>' +
+        '<input type="password" value="' + esc(App.adminCodeInput) + '" oninput="App.adminCodeInput=this.value">' +
+      '</div>' +
+      (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
+      '<button class="btn btn-primary btn-block" onclick="submitAdminLogin()">Se connecter</button>' +
+      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:12px" onclick="nav(\'welcome\')">Retour</button>' +
+    '</div>';
+}
+function submitAdminLogin() {
+  if ((App.adminCodeInput || "").trim() === info.adminCode) { App.error = ""; nav("adminHome"); }
+  else { App.error = "Code administrateur incorrect."; render(); }
+}
+
+/* ============ RENDER PRINCIPAL ============ */
+function render() {
+  var body;
+  switch (App.screen) {
+    case "welcome": body = screenWelcome(); break;
+    case "adminLogin": body = screenAdminLogin(); break;
+    case "player": body = screenPlayerHome(false); break;
+    case "adminPlayer": body = screenPlayerHome(true); break;
+    case "clubHome": body = screenClubHome(); break;
+    case "adminHome": body = screenAdminHome(); break;
+    case "adminPlanning": body = screenAdminPlanning(); break;
+    case "adminInfos": body = screenAdminInfos(); break;
+    case "adminBulkSemaine": body = screenAdminBulkSemaine(); break;
+    case "adminBulkMatch": body = screenAdminBulkMatch(); break;
+    case "adminBulkDate": body = screenAdminBulkDate(); break;
+    case "adminEducateurAvis": body = screenAdminEducateurAvis(); break;
+    default: body = screenWelcome();
+  }
+  var banner = "";
+  if (!navigator.onLine) {
+    banner = '<div class="offline-banner">📡 Hors ligne — tes données sont enregistrées sur cet appareil, elles seront envoyées dès que la connexion revient.</div>';
+  } else if (syncQueue.length > 0) {
+    banner = '<div class="sync-banner" id="sync-badge">⏳ ' + syncQueue.length + ' en attente d\'envoi</div>';
+  }
+  document.getElementById("shell").innerHTML = banner + body;
+}
+
+/* ============ PLAYER HOME (fiche joueur, tous rôles) ============ */
+var PH_TABS = [
+  { key: "identite", label: "Identité", icon: "⚽" },
+  { key: "planning", label: "Planning", icon: "📅" },
+  { key: "general", label: "Infos", icon: "ℹ️" },
+  { key: "seance", label: "Ma séance", icon: "🎯" },
+  { key: "semaine", label: "Ma semaine", icon: "🗓️" },
+  { key: "hooperJeudi", label: "Hooper (jeudi)", icon: "📅" },
+  { key: "matchSection", label: "Match section", icon: "📋" },
+  { key: "hooperWeekend", label: "Hooper (w-e)", icon: "🛏️" },
+  { key: "medical", label: "Médical", icon: "📏" },
+  { key: "tests", label: "Tests", icon: "⏱️" },
+];
+
+function openPlayer(playerId, adminFlag) {
+  App.activePlayerId = playerId;
+  App.tab = "identite";
+  nav(adminFlag ? "adminPlayer" : "player");
+}
+function setPHTab(key) { App.tab = key; resetDraft({}); render(); }
+
+function exitPlayer() {
+  App.activePlayerId = null;
+  if (App.screen === "player") {
+    if (App.activeClub) nav("clubHome"); else { App.code = ""; nav("welcome"); }
+  } else {
+    nav("adminHome");
+  }
+}
+
+function screenPlayerHome(isAdmin) {
+  var player = players.find(function (p) { return p.id === App.activePlayerId; });
+  if (!player) return screenWelcome();
+  var role = isAdmin ? "admin" : App.roleChoice;
+  var roleLabel = isAdmin ? "Vue administrateur" : (role === "joueur" ? "Vue joueur" : "Vue éducateur");
+  var pdata = getPlayerData(player.id);
+  if (!App.tab) App.tab = "identite";
+
+  var tabsHtml = PH_TABS.map(function (t) {
+    return '<button class="' + (App.tab === t.key ? "active" : "") + '" onclick="setPHTab(\'' + t.key + '\')"><span class="icon">' + t.icon + '</span>' + t.label + '</button>';
+  }).join("");
+
+  var content = "";
+  switch (App.tab) {
+    case "identite": content = tabIdentite(player, isAdmin, role); break;
+    case "planning": content = tabPlanning(isAdmin); break;
+    case "general": content = tabGeneral(isAdmin); break;
+    case "seance": content = tabSeance(player, pdata, isAdmin, role); break;
+    case "semaine": content = tabSemaine(player, pdata, isAdmin, role); break;
+    case "hooperJeudi": content = tabHooperJeudi(player, pdata, isAdmin, role); break;
+    case "matchSection": content = tabMatchSection(player, pdata, isAdmin, role); break;
+    case "hooperWeekend": content = tabHooperWeekend(player, pdata, isAdmin, role); break;
+    case "medical": content = tabMedical(player, pdata, isAdmin, role); break;
+    case "tests": content = tabTests(player, pdata, isAdmin, role); break;
+  }
+
+  return '<div class="header">' +
+      '<div><div class="title">' + esc(player.prenom) + " " + esc(player.nom) + '</div><div class="sub">' + esc(roleLabel) + '</div></div>' +
+      '<button class="btn-header" onclick="exitPlayer()">' + (isAdmin ? "Retour" : "Quitter") + '</button>' +
+    '</div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg)">' + content + '</div>' +
+    '<div class="tabbar">' + tabsHtml + '</div>';
+}
+
+/* ============ DEMARRAGE ============ */
+nav("welcome");
+</script>
+</body>
+</html>
