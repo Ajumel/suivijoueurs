@@ -969,10 +969,11 @@ function uploadDocFile(input) {
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data && data.ok) {
-          draft.lien = data.url;
-          statusEl.innerHTML = "✅ " + esc(file.name) + ' déposé — <a href="' + esc(data.url) + '" target="_blank">voir le lien</a>';
+          var link = data.viewUrl || data.url;
+          draft.lien = link;
+          statusEl.innerHTML = "✅ " + esc(file.name) + ' déposé — <a href="' + esc(link) + '" target="_blank">voir le lien</a>';
           var lienInput = document.getElementById("f-lien");
-          if (lienInput) lienInput.value = data.url;
+          if (lienInput) lienInput.value = link;
         } else {
           statusEl.textContent = "⚠️ Échec de l'envoi. Réessaie.";
         }
