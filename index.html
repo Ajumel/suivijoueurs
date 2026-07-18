@@ -918,7 +918,7 @@ function tabDocuments(isAdmin) {
       var f = draft;
       html += fieldInput("docDate", "Date", f.date, "", "date") +
         fieldInput("titre", "Titre", f.titre, "Ex : Convocation match UNSS") +
-        '<div class="field"><label>Texte</label>' + voiceTextarea("docTexte", f.texte || "", "") + '</div>';
+        '<div class="field"><label>Texte</label>' + voiceTextarea("texte", f.texte || "", "") + '</div>';
       if (SYNC_URL) {
         html += '<div class="field"><label>Déposer un fichier (PDF, image... 8 Mo max)</label>' +
           '<input type="file" id="doc-file-input" onchange="uploadDocFile(this)">' +
@@ -991,7 +991,7 @@ function startDocEdit(id) {
 }
 function cancelDocEdit() { App.docShowAdd = false; App.docEditingId = null; render(); }
 function saveDoc() {
-  var f = { date: draft.docDate || draft.date, titre: draft.titre, texte: draft.docTexte !== undefined ? draft.docTexte : draft.texte, lien: draft.lien };
+  var f = { date: draft.docDate || draft.date, titre: draft.titre, texte: draft.texte, lien: draft.lien };
   if (App.docEditingId) {
     var idx = info.documents.findIndex(function (d) { return d.id === App.docEditingId; });
     info.documents[idx] = Object.assign({}, info.documents[idx], f);
