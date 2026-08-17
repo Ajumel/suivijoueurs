@@ -342,6 +342,134 @@ function generateCode(name) {
 function byNomPrenom(a, b) {
   return a.nom.localeCompare(b.nom, "fr") || a.prenom.localeCompare(b.prenom, "fr");
 }
+function clickableName(p, targetTab) {
+  return '<span onclick="openPlayer(\'' + p.id + '\', true, \'' + (targetTab || "identite") + '\')" style="font-weight:700;color:#1C2620;font-size:14px;cursor:pointer;border-bottom:1px dashed var(--rouge)">' + esc(p.prenom) + " " + esc(p.nom) + ' \u203a</span>';
+}
+
+/* ============ MINI CALENDRIER (avec jours remplis colorés) ============ */
+function daysInMonthUTC2(y, m) { return new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); }
+function firstWeekdayMonUTC2(y, m) { return (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7; }
+function miniCalendar(prefix, selectedDate, filledSet, onSelectFn) {
+  var monthKey = prefix + "CalMonth";
+  if (!App[monthKey]) App[monthKey] = selectedDate.slice(0, 7);
+  var parts = App[monthKey].split("-");
+  var y = +parts[0], m = +parts[1] - 1;
+  var nd = daysInMonthUTC2(y, m);
+  var offset = firstWeekdayMonUTC2(y, m);
+  var today = todayIso();
+  var html = '<div class="card">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+    '<button type="button" onclick="shiftMiniCal(\'' + prefix + '\', -1)" style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:18px;cursor:pointer;padding:0 10px">\u2039</button>' +
+    '<span style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase">' + MOIS_LONG[m] + " " + y + '</span>' +
+    '<button type="button" onclick="shiftMiniCal(\'' + prefix + '\', 1)" style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:18px;cursor:pointer;padding:0 10px">\u203a</button>' +
+    '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">' +
+    JOURS_LETTRE.map(function (l) { return '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--gris)">' + l + '</div>'; }).join("") + '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+  for (var i = 0; i < offset; i++) html += "<div></div>";
+  for (var d = 1; d <= nd; d++) {
+    var iso = y + "-" + pad2(m + 1) + "-" + pad2(d);
+    var filled = filledSet.has(iso);
+    var isSel = iso === selectedDate;
+    var isToday = iso === today;
+    html += '<button type="button" onclick="' + onSelectFn + '(\'' + iso + '\')" style="aspect-ratio:1;border-radius:6px;font-size:11px;font-weight:' + (filled ? "800" : "500") +
+      ';cursor:pointer;border:' + (isSel ? "2px solid var(--noir)" : (isToday ? "1px dashed var(--rouge)" : "1px solid #eee")) +
+      ';background:' + (isSel ? "var(--noir)" : (filled ? "#dff3e0" : "#fafaf8")) +
+      ';color:' + (isSel ? "#fff" : (filled ? "#2b6b1f" : "#334036")) + '">' + d + "</button>";
+  }
+  html += '</div>';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--gris)"><span style="width:10px;height:10px;border-radius:3px;background:#dff3e0;display:inline-block"></span> Rempli ce jour-là</div>';
+  html += "</div>";
+  return html;
+}
+function shiftMiniCal(prefix, delta) {
+  delta = delta || -1;
+  var key = prefix + "CalMonth";
+  var parts = App[key].split("-");
+  var y = +parts[0], m = +parts[1] - 1 + delta;
+  if (m < 0) { m = 11; y--; }
+  if (m > 11) { m = 0; y++; }
+  App[key] = y + "-" + pad2(m + 1);
+  render();
+}
+
+function playerActivityStatus(pdata) {
+  var allDates = []
+    .concat(pdata.objectifs.map(function (e) { return e.date; }))
+    .concat(pdata.ressenti.map(function (e) { return e.date; }))
+    .concat(pdata.ficheVendredi.map(function (e) { return e.date; }))
+    .concat(pdata.hooperLundi.map(function (e) { return e.date; }));
+  if (allDates.length === 0) return { color: "#B3412E", label: "Jamais rempli" };
+  var latest = allDates.sort().pop();
+  var diffDays = Math.round((new Date(todayIso()) - new Date(latest)) / 86400000);
+  if (diffDays <= 1) return { color: "#2b6b1f", label: "Actif (moins de 24h) — " + fmtShort(latest) };
+  if (diffDays <= 2) return { color: "#e8c31f", label: "Dernière saisie il y a 2 jours — " + fmtShort(latest) };
+  if (diffDays <= 4) return { color: "#e8952f", label: "Dernière saisie il y a " + diffDays + " jours — " + fmtShort(latest) };
+  return { color: "#B3412E", label: "Inactif depuis " + diffDays + " jours — " + fmtShort(latest) };
+}
+
+/* ============ ECHEANCES JOUEUR (code couleur des obligations de la semaine) ============ */
+var ECH_COLORS = { vert: "#2b6b1f", jaune: "#e8c31f", orange: "#e8952f", rouge: "#B3412E", gris: "#8b9186" };
+function computeEcheances(pdata) {
+  var today = todayIso();
+  var wd = weekdayOfIso(today);
+  var isoWd = wd === 0 ? 7 : wd;
+  var monday = mondayOf(today);
+  var items = [];
+
+  var trainingDaysPassed = Math.min(isoWd, 4);
+  if (trainingDaysPassed > 0) {
+    var filledCount = 0;
+    for (var i = 0; i < trainingDaysPassed; i++) {
+      var d = addDaysIso(monday, i);
+      var hasAvant = pdata.objectifs.some(function (e) { return e.date === d; });
+      var hasApres = pdata.ressenti.some(function (e) { return e.date === d && e.moment === "apres"; });
+      if (hasAvant && hasApres) filledCount++;
+    }
+    var color = filledCount === trainingDaysPassed ? "vert" : (filledCount >= trainingDaysPassed - 1 ? "orange" : "rouge");
+    items.push({ label: "Séances (avant/après)", color: color, detail: filledCount + "/" + trainingDaysPassed + " séance(s) de la semaine à jour" });
+  }
+
+  var semaineEntry = pdata.semaines.find(function (s) { return s.weekStart === monday; });
+  var semaineFilled = semaineEntry && (semaineEntry.perfJoueur != null || semaineEntry.investJoueur != null);
+  var semColor = semaineFilled ? "vert" : (isoWd < 4 ? "jaune" : (isoWd === 4 ? "orange" : "rouge"));
+  items.push({ label: "Ma semaine", color: semColor, detail: semaineFilled ? "Fait" : (isoWd < 4 ? "À faire d'ici jeudi soir" : (isoWd === 4 ? "À faire ce soir" : "En retard depuis jeudi")) });
+
+  var jeudi = addDaysIso(monday, 3);
+  var hjFilled = pdata.ficheVendredi.some(function (e) { return e.date === jeudi; });
+  var hjColor = hjFilled ? "vert" : (isoWd < 4 ? "jaune" : (isoWd === 4 ? "orange" : "rouge"));
+  items.push({ label: "Hooper (jeudi, pour ton club)", color: hjColor, detail: hjFilled ? "Fait" : (isoWd < 4 ? "À faire avant vendredi" : (isoWd === 4 ? "À faire aujourd'hui" : "En retard")) });
+
+  var hwFilled = pdata.hooperLundi.some(function (e) { return e.date === monday; });
+  var hwColor, hwDetail;
+  if (hwFilled) { hwColor = "vert"; hwDetail = "Fait"; }
+  else if (isoWd === 7) { hwColor = "jaune"; hwDetail = "À faire demain matin"; }
+  else if (isoWd === 1) { hwColor = "orange"; hwDetail = "À faire ce matin"; }
+  else { hwColor = "rouge"; hwDetail = "En retard depuis lundi"; }
+  items.push({ label: "Hooper (week-end, après le match club)", color: hwColor, detail: hwDetail });
+
+  var recentMatches = matches.filter(function (m) { var diff = Math.round((new Date(today) - new Date(m.date)) / 86400000); return diff >= 0 && diff <= 7; });
+  if (recentMatches.length > 0) {
+    var unfilledMatch = recentMatches.find(function (m) {
+      var b = pdata.bilans.find(function (x) { return x.matchId === m.id; });
+      return !(b && (b.commentMatch || b.dispositif));
+    });
+    items.push({ label: "Résumé de match section", color: unfilledMatch ? "rouge" : "vert", detail: unfilledMatch ? "Match du " + fmtShort(unfilledMatch.date) + " pas encore résumé" : "À jour" });
+  }
+
+  return items;
+}
+function echeancesHtml(pdata) {
+  var items = computeEcheances(pdata);
+  var html = '<div class="card" style="border:2px solid var(--noir)"><div style="font-weight:800;color:var(--noir);font-size:14px;margin-bottom:10px">Mes échéances</div>';
+  items.forEach(function (it) {
+    html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">' +
+      '<span style="width:11px;height:11px;border-radius:50%;background:' + ECH_COLORS[it.color] + ';margin-top:3px;flex-shrink:0"></span>' +
+      '<div><div style="font-size:13px;font-weight:700;color:#1C2620">' + esc(it.label) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(it.detail) + '</div></div></div>';
+  });
+  html += '</div>';
+  return html;
+}
 function latestOf(list) {
   if (!list || list.length === 0) return null;
   var s = list.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
@@ -671,7 +799,7 @@ function draftGet(key, fallback) { return draft.hasOwnProperty(key) ? draft[key]
 function resetDraft(obj) { draft = Object.assign({}, obj || {}); }
 
 /* ============ ONGLET IDENTITE ============ */
-function tabIdentite(player, isAdmin, role) {
+function tabIdentite(player, isAdmin, role, pdata) {
   var canEdit = isAdmin || role === "joueur";
   var edit = App.identiteEdit;
   var html = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start">' +
@@ -679,6 +807,8 @@ function tabIdentite(player, isAdmin, role) {
     '<div style="font-size:13px;color:#5b6b5f;margin-top:2px">' + esc(player.groupe) + '</div></div>' +
     (canEdit ? '<button style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:13px;cursor:pointer" onclick="toggleIdentiteEdit()">' + (edit ? "Fermer" : "Modifier") + '</button>' : '') +
     '</div>';
+
+  if (!edit && pdata) html += echeancesHtml(pdata);
 
   if (!edit) {
     html += '<div style="margin-top:14px;font-size:14px;color:#334036;line-height:1.8">' +
@@ -1086,7 +1216,10 @@ function tabSeance(player, pdata, isAdmin, role) {
     var dates = [lo && lo.date, lr && lr.date].filter(Boolean).sort();
     App.seanceDate = dates.length ? dates[dates.length - 1] : todayIso();
   }
-  var html = '<div class="card"><div class="field"><label>Date de la séance</label><input type="date" value="' + App.seanceDate + '" onchange="setSeanceDate(this.value)"></div></div>';
+  var seanceFilled = new Set();
+  pdata.objectifs.forEach(function (e) { seanceFilled.add(e.date); });
+  pdata.ressenti.forEach(function (e) { seanceFilled.add(e.date); });
+  var html = miniCalendar("seance", App.seanceDate, seanceFilled, "setSeanceDate");
 
   html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Fixation d\'objectifs</div>';
   var obj = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
@@ -1195,9 +1328,13 @@ function tabSemaine(player, pdata, isAdmin, role) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="width:26px;height:26px;border-radius:6px;background:' + gi.bg + ';color:' + gi.c + ';font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">' + g + '</span><span style="font-size:13px;color:#334036">' + esc(gi.label) + '</span></div>';
     }).join("") + '</div>';
 
-  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis la semaine</div><div class="pill-row">' +
+  html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis la semaine <span style="font-weight:400;color:var(--gris)">(vert = déjà remplie)</span></div><div class="pill-row">' +
     SCHOOL_WEEKS.map(function (w) {
-      return '<button class="pill ' + (App.semaineWeekStart === w[0] ? "active" : "") + '" onclick="setSemaineWeek(\'' + w[0] + '\')">' + weekLabel(w) + '</button>';
+      var e = pdata.semaines.find(function (s) { return s.weekStart === w[0]; });
+      var filled = e && (e.perfJoueur != null || e.perfCoach != null || e.investJoueur != null || e.investCoach != null);
+      var isActive = App.semaineWeekStart === w[0];
+      var style = isActive ? "" : (filled ? "background:#dff3e0;color:#2b6b1f;border-color:#b7e0bc;" : "");
+      return '<button class="pill ' + (isActive ? "active" : "") + '" style="' + style + '" onclick="setSemaineWeek(\'' + w[0] + '\')">' + weekLabel(w) + '</button>';
     }).join("") + '</div></div>';
 
   html += '<div class="card" style="border:2px solid var(--rouge)">' +
@@ -1246,8 +1383,10 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   var f = draft;
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Fiche hebdomadaire à partager avec ton entraîneur de club avant la séance du vendredi.</div>';
   if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
-  html += '<div class="card"><div class="field"><label>Date</label><input type="date" value="' + App.hooperJeudiDate + '" onchange="setHooperJeudiDate(this.value)"></div>' +
-    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '') + '</div>';
+  var hjFilled = new Set();
+  pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
+  html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate") +
+    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
   html += '<div class="card">';
   if (canEdit) {
     html += oneToTenSlider("sommeil", "Sommeil : as-tu bien dormi cette semaine ?", f.sommeil) +
@@ -1313,8 +1452,14 @@ function tabMatchSection(player, pdata, isAdmin, role) {
   var match = sorted.find(function (m) { return m.id === App.matchSelectedId; }) || sorted[0];
   var mine = pdata.bilans.find(function (b) { return b.matchId === match.id; });
 
-  var html = '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis le match</div><div class="pill-row">' +
-    sorted.map(function (m) { return '<button class="pill ' + (App.matchSelectedId === m.id ? "active" : "") + '" onclick="selectMatchSection(\'' + m.id + '\')">' + m.date + ' · vs ' + esc(m.adversaire || "?") + '</button>'; }).join("") +
+  var html = '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis le match <span style="font-weight:400;color:var(--gris)">(vert = déjà rempli)</span></div><div class="pill-row">' +
+    sorted.map(function (m) {
+      var b = pdata.bilans.find(function (x) { return x.matchId === m.id; });
+      var filled = b && (b.commentMatch || b.dispositif || b.objectifMatch);
+      var isActive = App.matchSelectedId === m.id;
+      var style = isActive ? "" : (filled ? "background:#dff3e0;color:#2b6b1f;border-color:#b7e0bc;" : "");
+      return '<button class="pill ' + (isActive ? "active" : "") + '" style="' + style + '" onclick="selectMatchSection(\'' + m.id + '\')">' + m.date + ' · vs ' + esc(m.adversaire || "?") + '</button>';
+    }).join("") +
     '</div></div>';
 
   var blank = { dispositif: "", compositionEquipe: "", consignesAvantMatch: "", scoreMiTemps: "", consignesMiTemps: "", objectifMatch: "", objectifResultat: "=", commentMatch: "", perspectives: "", noteJoueur: null, commentaireProf: "", noteProf: null };
@@ -1421,8 +1566,10 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   var score = f.sommeil + f.doms + f.mood + f.fatigue + f.faim;
 
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Partie joueur à remplir le lundi matin après le match du week-end. Partie entraîneur réservée au responsable de la section.</div>';
-  html += '<div class="card"><div class="field"><label>Date</label><input type="date" value="' + App.hooperWeekendDate + '" onchange="setHooperWeekendDate(this.value)"></div>' +
-    (current ? '<div style="font-size:11px;color:var(--rouge);font-weight:700">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '') + '</div>';
+  var hwFilled = new Set();
+  pdata.hooperLundi.forEach(function (e) { hwFilled.add(e.date); });
+  html += miniCalendar("hw", App.hooperWeekendDate, hwFilled, "setHooperWeekendDate") +
+    (current ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
 
   html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">JOUEUR</div>';
   if (canEditJoueur) {
@@ -1691,6 +1838,7 @@ function screenAdminHome() {
   var filtered = players.filter(function (p) { return (p.prenom + " " + p.nom).toLowerCase().indexOf((App.search || "").toLowerCase()) !== -1; });
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   var clubs = clubsFromPlayers();
+  var activityData = loadAllPlayerData();
 
   var html = '<div class="header"><div class="title">Administration</div><div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="nav(\'welcome\')">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
@@ -1701,7 +1849,8 @@ function screenAdminHome() {
   html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (par semaine, répondre)</button><div style="height:16px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (par semaine, répondre)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openManquants()">🚦 Qui a rempli ? (code couleur)</button><div style="height:16px"></div>';
 
   if (clubs.length > 0) {
     html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Codes entraîneurs (par club)</div>';
@@ -1717,6 +1866,12 @@ function screenAdminHome() {
   }
 
   html += '<input type="text" style="margin-bottom:14px" placeholder="Rechercher un joueur..." value="' + esc(App.search) + '" oninput="App.search=this.value; render()">';
+  html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;color:var(--gris)">' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#2b6b1f;display:inline-block"></span> Moins de 24h</span>' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#e8c31f;display:inline-block"></span> 2 jours</span>' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#e8952f;display:inline-block"></span> 3-4 jours</span>' +
+    '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#B3412E;display:inline-block"></span> 5+ jours / jamais</span>' +
+    '</div>';
 
   html += '<div class="card">';
   if (!App.showAddPlayer) html += '<button class="btn btn-accent btn-block" onclick="App.showAddPlayer=true; resetDraft({prenom:\'\',nom:\'\',groupe:groups[0]||\'Groupe 1\'}); render()">+ Ajouter un joueur</button>';
@@ -1732,9 +1887,12 @@ function screenAdminHome() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px">' + esc(g) + '</div>';
     filtered.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      var status = playerActivityStatus(activityData[p.id]);
       html += '<div style="background:#fff;border:1px solid #e3e7de;border-radius:10px;padding:12px 14px;margin-bottom:8px">' +
         '<div onclick="openPlayer(\'' + p.id + '\', true)" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
-        '<div><div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(p.poste || "Poste non renseigné") + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span title="' + esc(status.label) + '" style="width:12px;height:12px;border-radius:50%;background:' + status.color + ';flex-shrink:0;display:inline-block"></span>' +
+        '<div><div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(p.poste || "Poste non renseigné") + '</div></div></div>' +
         '<div style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(p.code) + '</div></div>' +
         '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0ec;text-align:right">';
       if (App.confirmDeletePlayerId === p.id) {
@@ -1805,7 +1963,7 @@ function screenAdminBulkSemaine() {
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
       var pdata = App.bulk.data[p.id];
       var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
-      html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:10px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>' +
+      html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "semaine") + '</div>' +
         '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "perfJoueur", entry.perfJoueur) + '</div>' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "perfCoach", entry.perfCoach) + '</div></div></div>' +
@@ -1876,7 +2034,7 @@ function screenAdminBulkMatch() {
       players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
         var pdata = App.bulk.data[p.id];
         var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { appreciationJoueur: "", noteJoueur: null, commentaireProf: "", noteProf: null };
-        html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:8px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>';
+        html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "matchSection") + '</div>';
         if (entry.appreciationJoueur) html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#334036">' + esc(entry.appreciationJoueur) + (entry.noteJoueur != null ? ' <b>(' + entry.noteJoueur + '/10)</b>' : "") + '</div>';
         else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore donné son appréciation.</div>';
         html += '<div class="voice-wrap"><textarea placeholder="Ton commentaire" oninput="setBulkComment(\'' + p.id + '\',\'commentaireProf\',this.value)">' + esc(entry.commentaireProf) + '</textarea></div>' +
@@ -1956,7 +2114,7 @@ function screenAdminBulkDate() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      html += '<div class="card"><div style="font-weight:700;color:#1C2620;font-size:14px;margin-bottom:6px">' + esc(p.prenom) + " " + esc(p.nom) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
+      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, App.bulk.dateType === "blessures" ? "medical" : App.bulk.dateType) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
     });
   });
   html += '</div>';
@@ -2020,6 +2178,80 @@ function setBulkHooperReponse(playerId, entryId, value) {
 }
 
 /* ---- Avis des éducateurs (par semaine) ---- */
+function openManquants() {
+  App.bulk.data = loadAllPlayerData();
+  if (!App.manquantsType) App.manquantsType = "seance";
+  if (!App.manquantsDate) App.manquantsDate = todayIso();
+  nav("adminManquants");
+}
+var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (w-e)"], ["semaine", "Ma semaine"]];
+function manquantsListFor(pdata, type) {
+  if (type === "seance") {
+    var a = pdata.objectifs || [], b = pdata.ressenti || [];
+    return a.concat(b);
+  }
+  if (type === "hooperJeudi") return pdata.ficheVendredi || [];
+  if (type === "hooperWeekend") return pdata.hooperLundi || [];
+  if (type === "semaine") return (pdata.semaines || []).map(function (s) { return { date: s.weekStart }; });
+  return [];
+}
+function manquantsSummary(pdata, entry, type) {
+  if (!entry) return "";
+  if (type === "hooperJeudi") return entry.pointsForts || entry.infosEntraineur || (entry.presenceVendredi ? "Présence : " + entry.presenceVendredi : "");
+  if (type === "hooperWeekend") return entry.resumeMatchCoach || entry.commentaireDivers || (entry.score != null ? "Score Hooper : " + entry.score + "/25" : "");
+  if (type === "seance") return entry.theme || entry.appreciation || "";
+  return "";
+}
+function screenAdminManquants() {
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  var type = App.manquantsType;
+  var checkDate = App.manquantsDate;
+
+  var rows = players.map(function (p) {
+    var pdata = App.bulk.data[p.id];
+    var list = manquantsListFor(pdata, type);
+    var forDate = list.find(function (e) { return e.date === checkDate; });
+    var latest = list.length ? list.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0] : null;
+    return { player: p, filled: !!forDate, entry: forDate, latest: latest };
+  });
+  rows.sort(function (a, b) { if (a.filled === b.filled) return byNomPrenom(a.player, b.player); return a.filled ? 1 : -1; });
+
+  var nbFilled = rows.filter(function (r) { return r.filled; }).length;
+
+  var html = '<div class="header"><div class="title">Qui a rempli ?</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+
+  html += '<div class="card"><div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
+    MANQUANTS_TYPES.map(function (t) { return '<button class="pill ' + (type === t[0] ? "active" : "") + '" style="flex:1 1 40%" onclick="setManquantsType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>';
+  html += type === "semaine"
+    ? '<div class="field"><label>Semaine</label><div class="pill-row">' + SCHOOL_WEEKS.map(function (w) { return '<button class="pill ' + (checkDate === w[0] ? "active" : "") + '" onclick="setManquantsDate(\'' + w[0] + '\')">' + weekLabel(w) + '</button>'; }).join("") + '</div></div>'
+    : '<div class="field"><label>Date</label><input type="date" value="' + checkDate + '" onchange="setManquantsDate(this.value)"></div>';
+  html += '<div style="font-size:13px;font-weight:700;color:var(--noir);margin-top:6px">' + nbFilled + ' / ' + players.length + ' ont rempli à cette date</div>';
+  html += '</div>';
+
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:12px 2px 6px">' + esc(g) + '</div>';
+    rows.filter(function (r) { return r.player.groupe === g; }).forEach(function (r) {
+      var dotColor = r.filled ? "#2b6b1f" : "#B3412E";
+      var targetTab = type === "seance" ? "seance" : type;
+      html += '<div class="card" style="display:flex;gap:10px;align-items:flex-start">' +
+        '<span style="width:12px;height:12px;border-radius:50%;background:' + dotColor + ';margin-top:3px;flex-shrink:0"></span>' +
+        '<div style="flex:1">' + clickableName(r.player, targetTab) +
+        '<div style="font-size:12px;color:var(--gris);margin-top:2px">' +
+        (r.filled ? "Rempli à cette date" : "Pas rempli à cette date") +
+        (r.latest ? " · Dernière saisie : " + fmtShort(r.latest.date) : " · Aucune saisie jamais") + '</div>';
+      var summary = manquantsSummary(App.bulk.data[r.player.id], r.entry || r.latest, type);
+      if (summary) html += '<div style="font-size:12px;color:#334036;margin-top:4px;font-style:italic">« ' + esc(summary.slice(0, 90)) + (summary.length > 90 ? "…" : "") + ' »</div>';
+      html += '</div></div>';
+    });
+  });
+
+  html += '</div>';
+  return html;
+}
+function setManquantsType(t) { App.manquantsType = t; if (t === "semaine") App.manquantsDate = SCHOOL_WEEKS[currentSchoolWeekIndex()][0]; else App.manquantsDate = todayIso(); render(); }
+function setManquantsDate(d) { App.manquantsDate = d; render(); }
+
 function openEducateurAvis() {
   App.bulk.data = loadAllPlayerData();
   nav("adminEducateurAvis");
@@ -2051,7 +2283,7 @@ function screenAdminEducateurAvis() {
     g.items.forEach(function (item) {
       var p = item.player, e = item.entry;
       html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</div></div>' +
+        '<div>' + clickableName(p, "hooperWeekend") + '</div><div style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</div></div>' +
         '<div style="background:#f7f8f4;border-radius:8px;padding:8px;font-size:13px;color:#334036;margin-bottom:8px">' +
         (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") + '</div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">TA RÉPONSE</div>' +
@@ -2264,6 +2496,7 @@ function render() {
     case "adminBulkMatch": body = screenAdminBulkMatch(); break;
     case "adminBulkDate": body = screenAdminBulkDate(); break;
     case "adminEducateurAvis": body = screenAdminEducateurAvis(); break;
+    case "adminManquants": body = screenAdminManquants(); break;
     case "adminImport": body = screenAdminImport(); break;
     default: body = screenWelcome();
   }
@@ -2290,9 +2523,9 @@ var PH_TABS = [
   { key: "tests", label: "Tests", icon: "⏱️" },
 ];
 
-function openPlayer(playerId, adminFlag) {
+function openPlayer(playerId, adminFlag, targetTab) {
   App.activePlayerId = playerId;
-  App.tab = "identite";
+  App.tab = targetTab || "identite";
   nav(adminFlag ? "adminPlayer" : "player");
 }
 function setPHTab(key) { App.tab = key; resetDraft({}); render(); }
@@ -2320,7 +2553,7 @@ function screenPlayerHome(isAdmin) {
 
   var content = "";
   switch (App.tab) {
-    case "identite": content = tabIdentite(player, isAdmin, role); break;
+    case "identite": content = tabIdentite(player, isAdmin, role, pdata); break;
     case "planning": content = tabPlanning(isAdmin); break;
     case "general": content = tabGeneral(isAdmin); break;
     case "seance": content = tabSeance(player, pdata, isAdmin, role); break;
