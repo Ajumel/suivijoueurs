@@ -797,6 +797,7 @@ var draft = {};
 function draftSet(key, value) { draft[key] = value; }
 function draftGet(key, fallback) { return draft.hasOwnProperty(key) ? draft[key] : fallback; }
 function resetDraft(obj) { draft = Object.assign({}, obj || {}); }
+function mergeIntoDraft(obj) { Object.keys(obj || {}).forEach(function (k) { draft[k] = obj[k]; }); }
 
 /* ============ ONGLET IDENTITE ============ */
 function tabIdentite(player, isAdmin, role, pdata) {
@@ -1224,7 +1225,7 @@ function tabSeance(player, pdata, isAdmin, role) {
   html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Fixation d\'objectifs</div>';
   var obj = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
   if (!draft._objInit || draft._objDate !== App.seanceDate) {
-    resetDraft(obj || { theme: "", objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", conseils: "", plaisir: 5, performance: 5, fatigue: 5 });
+    mergeIntoDraft(obj || { theme: "", objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", conseils: "", plaisir: 5, performance: 5, fatigue: 5 });
     draft._objInit = true; draft._objDate = App.seanceDate;
   }
   var f = draft;
@@ -1236,7 +1237,6 @@ function tabSeance(player, pdata, isAdmin, role) {
     resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
     '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
     resultPicker("resultatDefensif", f.resultatDefensif, !canEdit) + '<div style="height:12px"></div>' +
-    '<div class="field"><label>Conseils pour les prochaines séances</label>' + voiceTextareaDisabled("conseils", f.conseils, "", !canEdit) + '</div>' +
     scaleRow("plaisir", "Plaisir", f.plaisir) + scaleRow("performance", "Performance", f.performance) + scaleRow("fatigue", "Fatigue", f.fatigue);
   if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveObjectif()">' + (obj ? "Mettre à jour" : "Enregistrer") + '</button>';
   html += '</div>';
@@ -1245,7 +1245,8 @@ function tabSeance(player, pdata, isAdmin, role) {
   if (!App.ressentiMoment) App.ressentiMoment = "avant";
   var ress = pdata.ressenti.find(function (r) { return r.date === App.seanceDate && r.moment === App.ressentiMoment; });
   if (!draft._ressInit || draft._ressDate !== App.seanceDate || draft._ressMoment !== App.ressentiMoment) {
-    resetDraft(ress || { forme: 5, sommeil: 5, motivation: 5, charge: 5, plaisir: 5, appreciation: "" });
+    var ressInit = ress ? Object.assign({}, ress, { plaisirRess: ress.plaisir != null ? ress.plaisir : 5 }) : { forme: 5, sommeil: 5, motivation: 5, charge: 5, plaisirRess: 5, appreciation: "" };
+    mergeIntoDraft(ressInit);
     draft._ressInit = true; draft._ressDate = App.seanceDate; draft._ressMoment = App.ressentiMoment;
   }
   var rf = draft;
@@ -1257,7 +1258,7 @@ function tabSeance(player, pdata, isAdmin, role) {
   if (App.ressentiMoment === "avant") {
     html += scaleRow("forme", "Forme physique", rf.forme) + scaleRow("sommeil", "Sommeil", rf.sommeil) + scaleRow("motivation", "Motivation", rf.motivation);
   } else {
-    html += scaleRow("charge", "Charge perçue", rf.charge) + scaleRow("plaisirRess", "Plaisir", rf.plaisir) +
+    html += scaleRow("charge", "Charge perçue", rf.charge) + scaleRow("plaisirRess", "Plaisir", rf.plaisirRess) +
       '<div class="field"><label>Appréciation sur la thématique / le travail réalisé</label>' + voiceTextareaDisabled("appreciation", rf.appreciation, "Ce que j\'ai retenu, réussi, à retravailler...", !canEdit) + '</div>';
   }
   if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveRessenti()">' + (ress ? "Mettre à jour" : "Enregistrer") + '</button>';
@@ -1328,6 +1329,18 @@ function tabSemaine(player, pdata, isAdmin, role) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="width:26px;height:26px;border-radius:6px;background:' + gi.bg + ';color:' + gi.c + ';font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">' + g + '</span><span style="font-size:13px;color:#334036">' + esc(gi.label) + '</span></div>';
     }).join("") + '</div>';
 
+  var perfLocked = !canEditJoueur || draft.perfCoach != null;
+  var investLocked = !canEditJoueur || draft.investCoach != null;
+  html += '<div class="card" style="border:2px solid var(--rouge)">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--gris)">Semaine sélectionnée</div><div style="font-size:15px;font-weight:800;color:var(--noir);margin-top:2px">' + week[0] + ' → ' + week[1] + '</div>' +
+    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("perfJoueur", draft.perfJoueur, perfLocked) + (perfLocked && canEditJoueur ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("perfCoach", draft.perfCoach, !canEditCoach) + '</div></div></div>' +
+    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("investJoueur", draft.investJoueur, investLocked) + (investLocked && canEditJoueur ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>' +
+    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("investCoach", draft.investCoach, !canEditCoach) + '</div></div></div>' +
+    '</div>';
+
   html += '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis la semaine <span style="font-weight:400;color:var(--gris)">(vert = déjà remplie)</span></div><div class="pill-row">' +
     SCHOOL_WEEKS.map(function (w) {
       var e = pdata.semaines.find(function (s) { return s.weekStart === w[0]; });
@@ -1336,16 +1349,6 @@ function tabSemaine(player, pdata, isAdmin, role) {
       var style = isActive ? "" : (filled ? "background:#dff3e0;color:#2b6b1f;border-color:#b7e0bc;" : "");
       return '<button class="pill ' + (isActive ? "active" : "") + '" style="' + style + '" onclick="setSemaineWeek(\'' + w[0] + '\')">' + weekLabel(w) + '</button>';
     }).join("") + '</div></div>';
-
-  html += '<div class="card" style="border:2px solid var(--rouge)">' +
-    '<div style="font-size:12px;font-weight:700;color:var(--gris)">Semaine sélectionnée</div><div style="font-size:15px;font-weight:800;color:var(--noir);margin-top:2px">' + week[0] + ' → ' + week[1] + '</div>' +
-    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
-    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("perfJoueur", draft.perfJoueur, !canEditJoueur) + '</div>' +
-    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("perfCoach", draft.perfCoach, !canEditCoach) + '</div></div></div>' +
-    '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
-    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + gradePicker("investJoueur", draft.investJoueur, !canEditJoueur) + '</div>' +
-    '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + gradePicker("investCoach", draft.investCoach, !canEditCoach) + '</div></div></div>' +
-    '</div>';
   return html;
 }
 function setSemaineWeek(w) { App.semaineWeekStart = w; render(); }
@@ -1377,7 +1380,7 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : todayIso(); }
   var current = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
   if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
-    resetDraft(current || { sommeil: 5, fatigueMentale: 5, fatiguePhysique: 5, effortPercu: 5, etatForme: 5, confiance: 5, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
+    resetDraft(current || { sommeil: 5, formeMentale: 5, formePhysique: 5, confiance: 5, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
     draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
   }
   var f = draft;
@@ -1389,17 +1392,15 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
     (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
   html += '<div class="card">';
   if (canEdit) {
-    html += oneToTenSlider("sommeil", "Sommeil : as-tu bien dormi cette semaine ?", f.sommeil) +
-      oneToTenSlider("fatigueMentale", "Fatigue mentale", f.fatigueMentale) +
-      oneToTenSlider("fatiguePhysique", "Fatigue physique", f.fatiguePhysique) +
-      oneToTenSlider("effortPercu", "Effort perçu séance de ce matin", f.effortPercu) +
-      oneToTenSlider("etatForme", "État de forme actuel", f.etatForme) +
+    html += oneToTenSlider("sommeil", "J'ai bien dormi", f.sommeil) +
+      oneToTenSlider("formeMentale", "Forme mentale", f.formeMentale) +
+      oneToTenSlider("formePhysique", "Forme physique", f.formePhysique) +
       oneToTenSlider("confiance", "Niveau de confiance", f.confiance) +
       fieldInput("principeOffensif", "Principe offensif abordé cette semaine", f.principeOffensif) +
       fieldInput("principeDefensif", "Principe défensif abordé cette semaine", f.principeDefensif) +
-      '<div class="field"><label>Tes deux points forts de la semaine</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div>' +
-      '<div class="field"><label>Tes deux points à améliorer</label>' + voiceTextarea("pointsAmeliorer", f.pointsAmeliorer, "") + '</div>' +
-      ouiNonPicker("aJoueSection", "As-tu joué avec la section cette semaine ?", f.aJoueSection) +
+      '<div class="field"><label>Ton point fort de la semaine</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div>' +
+      '<div class="field"><label>Ton point faible de la semaine</label>' + voiceTextarea("pointsAmeliorer", f.pointsAmeliorer, "") + '</div>' +
+      ouiNonPicker("aJoueSection", "As-tu joué un match avec la section cette semaine ?", f.aJoueSection) +
       (f.aJoueSection === "Oui" ? fieldInput("dureeJeuSection", "Combien de temps as-tu joué ? (ex : 45 min, tout le match)", f.dureeJeuSection) : "") +
       '<div class="field"><label>Informations à partager à ton entraîneur</label>' + voiceTextarea("infosEntraineur", f.infosEntraineur, "") + '</div>' +
       ouiNonPicker("presenceVendredi", "Seras-tu présent vendredi à la séance de ton club ?", f.presenceVendredi) +
@@ -1408,11 +1409,11 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
     html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Le joueur n\'a pas encore répondu pour cette date.</div>';
   } else {
     html += readOnlyRows([
-      ["Sommeil", f.sommeil + "/10"], ["Fatigue mentale", f.fatigueMentale + "/10"], ["Fatigue physique", f.fatiguePhysique + "/10"],
-      ["Forme", f.etatForme + "/10"], ["Confiance", f.confiance + "/10"],
+      ["J'ai bien dormi", f.sommeil + "/10"], ["Forme mentale", f.formeMentale + "/10"], ["Forme physique", f.formePhysique + "/10"],
+      ["Confiance", f.confiance + "/10"],
       ["Principe offensif", f.principeOffensif], ["Principe défensif", f.principeDefensif],
-      ["Points forts", f.pointsForts], ["À améliorer", f.pointsAmeliorer],
-      ["A joué avec la section", f.aJoueSection], ["Durée de jeu", f.dureeJeuSection], ["Présence vendredi", f.presenceVendredi],
+      ["Point fort", f.pointsForts], ["Point faible", f.pointsAmeliorer],
+      ["A joué un match avec la section", f.aJoueSection], ["Durée de jeu", f.dureeJeuSection], ["Présence vendredi", f.presenceVendredi],
     ]);
   }
   html += '</div>';
@@ -1558,12 +1559,12 @@ function scale5(name, label, value, disabled) {
 function tabHooperWeekend(player, pdata, isAdmin, role) {
   if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : todayIso(); }
   var current = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
-  var blank = { sommeil: 3, doms: 3, mood: 3, fatigue: 3, faim: 3, infos: "", aJoueClub: "Oui", pointsForts: "", pointsFaibles: "", pointsAmeliorer: "", bilanNote: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
+  var blank = { aJoueClub: "Oui", pointsForts: "", pointsFaibles: "", bienJoue: 3, formePhysiqueWE: 3, heureuxMatch: 3, pretLundi: 3, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
   if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
   var f = draft;
   var canEditJoueur = isAdmin || role === "joueur";
   var canEditCoach = isAdmin || role === "entraineur";
-  var score = f.sommeil + f.doms + f.mood + f.fatigue + f.faim;
+  var score = f.bienJoue + f.formePhysiqueWE + f.heureuxMatch + f.pretLundi;
 
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Partie joueur à remplir le lundi matin après le match du week-end. Partie entraîneur réservée au responsable de la section.</div>';
   var hwFilled = new Set();
@@ -1573,18 +1574,17 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
 
   html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">JOUEUR</div>';
   if (canEditJoueur) {
-    html += scale5("sommeil", "Sommeil : as-tu bien dormi ?", f.sommeil) + scale5("doms", "DOMS : as-tu des courbatures ?", f.doms) + scale5("mood", "Mood : comment vas-tu ?", f.mood) +
-      scale5("fatigue", "Fatigue générale : te sens-tu fatigué ?", f.fatigue) + scale5("faim", "Faim : as-tu bien mangé ?", f.faim) +
-      '<div style="font-size:13px;font-weight:700;color:var(--noir);margin:6px 0 14px">Score Hooper : ' + score + '/25</div>' +
-      '<div class="field"><label>Informations à partager</label>' + voiceTextarea("infos", f.infos, "") + '</div>' +
-      ouiNonPicker("aJoueClub", "As-tu joué avec ton club ce week-end ?", f.aJoueClub) +
+    html += ouiNonPicker("aJoueClub", "As-tu joué avec ton club aujourd'hui ?", f.aJoueClub) +
       (f.aJoueClub === "Oui" ? '<div class="field"><label>Points forts</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div><div class="field"><label>Points faibles</label>' + voiceTextarea("pointsFaibles", f.pointsFaibles, "") + '</div>' : "") +
-      '<div class="field"><label>Points que tu aimerais améliorer</label>' + voiceTextarea("pointsAmeliorer", f.pointsAmeliorer, "") + '</div>' +
+      scale5("bienJoue", "As-tu bien joué ?", f.bienJoue) + scale5("formePhysiqueWE", "Es-tu en forme physique ?", f.formePhysiqueWE) +
+      scale5("heureuxMatch", "Es-tu heureux de ton match ?", f.heureuxMatch) + scale5("pretLundi", "Es-tu prêt pour revenir au collège en forme lundi ?", f.pretLundi) +
+      '<div style="font-size:13px;font-weight:700;color:var(--noir);margin:6px 0 14px">Score Hooper : ' + score + '/20</div>' +
+      '<div class="field"><label>Informations à partager</label>' + voiceTextarea("infos", f.infos, "") + '</div>' +
       '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
   } else if (!current) {
     html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Le joueur n\'a pas encore répondu pour cette date.</div>';
   } else {
-    html += readOnlyRows([["Sommeil", f.sommeil + "/5"], ["DOMS", f.doms + "/5"], ["Mood", f.mood + "/5"], ["Fatigue", f.fatigue + "/5"], ["Faim", f.faim + "/5"], ["Infos", f.infos], ["A joué avec son club", f.aJoueClub], ["Points forts", f.pointsForts], ["À améliorer", f.pointsAmeliorer]]);
+    html += readOnlyRows([["A joué avec son club", f.aJoueClub], ["Points forts", f.pointsForts], ["Points faibles", f.pointsFaibles], ["A bien joué", f.bienJoue + "/5"], ["Forme physique", f.formePhysiqueWE + "/5"], ["Heureux du match", f.heureuxMatch + "/5"], ["Prêt pour lundi", f.pretLundi + "/5"], ["Infos", f.infos]]);
   }
   html += '</div>';
 
@@ -1601,8 +1601,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   html += '</div>';
 
   if (isAdmin) {
-    html += '<div class="card">' + fieldInput("bilanNote", "Bilan du professeur / 25", f.bilanNote, "20") +
-      '<div class="field"><label>Ta réponse à l\'éducateur (visible par lui)</label>' + voiceTextarea("reponseAdmin", f.reponseAdmin, "Merci pour ce retour...") + '</div>' +
+    html += '<div class="card"><div class="field"><label>Ta réponse à l\'éducateur (visible par lui)</label>' + voiceTextarea("reponseAdmin", f.reponseAdmin, "Merci pour ce retour...") + '</div>' +
       '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">Enregistrer</button></div>';
   } else if (role === "entraineur") {
     html += current && current.reponseAdmin
@@ -1616,7 +1615,7 @@ function saveHooperWeekend() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
   var existing = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
-  var score = draft.sommeil + draft.doms + draft.mood + draft.fatigue + draft.faim;
+  var score = draft.bienJoue + draft.formePhysiqueWE + draft.heureuxMatch + draft.pretLundi;
   var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.hooperWeekendDate }, cleanDraft(), { score: score });
   pdata.hooperLundi = existing ? pdata.hooperLundi.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.hooperLundi.concat([entry]);
   savePlayerData(pid, pdata);
@@ -1833,7 +1832,178 @@ function screenClubHome() {
 }
 function exitClub() { App.activeClub = null; App.code = ""; nav("welcome"); }
 
+function screenSpecialStaffHome() {
+  var staff = (info.specialStaff || []).find(function (s) { return s.id === App.activeSpecialStaffId; }) || { nom: "?", playerIds: [] };
+  var staffPlayers = players.filter(function (p) { return staff.playerIds.indexOf(p.id) !== -1; });
+  var html = '<div class="header"><div><div class="title">' + esc(staff.nom) + '</div><div class="sub">Encadrant — accès ciblé</div></div>' +
+    '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitSpecialStaff()">Quitter</button></div></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg)">' +
+    '<div style="font-size:12px;color:var(--gris);margin-bottom:12px">' + staffPlayers.length + ' joueur' + (staffPlayers.length > 1 ? "s" : "") + ' suivi' + (staffPlayers.length > 1 ? "s" : "") + '.</div>';
+  staffPlayers.slice().sort(byNomPrenom).forEach(function (p) {
+    html += '<div onclick="App.roleChoice=\'entraineur\'; openPlayer(\'' + p.id + '\', false)" style="background:#fff;border:1px solid #e3e7de;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
+      '<div><div style="font-weight:700;color:#1C2620;font-size:14px">' + esc(p.prenom) + " " + esc(p.nom) + '</div><div style="font-size:12px;color:var(--gris)">' + esc(p.classe || p.groupe) + '</div></div>' +
+      '<span style="color:var(--rouge);font-size:18px">›</span></div>';
+  });
+  html += '</div>';
+  return html;
+}
+function exitSpecialStaff() { App.activeSpecialStaffId = null; App.code = ""; nav("welcome"); }
+
 /* ============ ESPACE ADMIN : ACCUEIL ============ */
+/* ============ CALENDRIER ADMIN (clic sur un jour = detail de ce qui a ete rempli) ============ */
+function dayHasAnyData(iso, activityData) {
+  var wd = weekdayOfIso(iso) === 0 ? 7 : weekdayOfIso(iso);
+  return players.some(function (p) {
+    var pdata = activityData[p.id];
+    if (wd >= 1 && wd <= 4) {
+      if (pdata.objectifs.some(function (e) { return e.date === iso; })) return true;
+      if (pdata.ressenti.some(function (e) { return e.date === iso; })) return true;
+    }
+    if (wd === 4) {
+      var mon = mondayOf(iso);
+      if (pdata.semaines.some(function (s) { return s.weekStart === mon && (s.perfJoueur != null || s.investJoueur != null); })) return true;
+    }
+    if (wd === 5) {
+      var jeudi = addDaysIso(iso, -1);
+      if (pdata.ficheVendredi.some(function (e) { return e.date === jeudi; })) return true;
+    }
+    if (wd === 6) {
+      if (pdata.hooperLundi.some(function (e) { return e.date === iso; })) return true;
+    }
+    return false;
+  });
+}
+function adminCalendarHtml(activityData) {
+  if (!App.adminCalMonth) App.adminCalMonth = todayIso().slice(0, 7);
+  var parts = App.adminCalMonth.split("-");
+  var y = +parts[0], m = +parts[1] - 1;
+  var nd = daysInMonthUTC2(y, m);
+  var offset = firstWeekdayMonUTC2(y, m);
+  var today = todayIso();
+  var html = '<div class="card">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+    '<button type="button" onclick="shiftAdminCal(-1)" style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:18px;cursor:pointer;padding:0 10px">\u2039</button>' +
+    '<span style="font-weight:800;color:var(--noir);font-size:14px;text-transform:uppercase">' + MOIS_LONG[m] + " " + y + '</span>' +
+    '<button type="button" onclick="shiftAdminCal(1)" style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:18px;cursor:pointer;padding:0 10px">\u203a</button>' +
+    '</div>';
+  html += '<div style="font-size:11px;color:var(--gris);margin-bottom:8px">Clique un jour pour voir ce que chacun a rempli.</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">' +
+    JOURS_LETTRE.map(function (l) { return '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--gris)">' + l + '</div>'; }).join("") + '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+  for (var i = 0; i < offset; i++) html += "<div></div>";
+  for (var d = 1; d <= nd; d++) {
+    var iso = y + "-" + pad2(m + 1) + "-" + pad2(d);
+    var isToday = iso === today;
+    var wd = weekdayOfIso(iso) === 0 ? 7 : weekdayOfIso(iso);
+    var relevant = wd >= 1 && wd <= 6;
+    var filled = relevant && dayHasAnyData(iso, activityData);
+    html += '<button type="button" onclick="openAdminDay(\'' + iso + '\')" style="aspect-ratio:1;border-radius:6px;font-size:11px;font-weight:' + (filled ? "800" : "500") +
+      ';cursor:pointer;border:' + (isToday ? "1px dashed var(--rouge)" : "1px solid #eee") +
+      ';background:' + (filled ? "#dff3e0" : "#fafaf8") +
+      ';color:' + (filled ? "#2b6b1f" : (relevant ? "#334036" : "#c3c8bd")) + '">' + d + "</button>";
+  }
+  html += '</div></div>';
+  return html;
+}
+function shiftAdminCal(delta) {
+  var parts = App.adminCalMonth.split("-");
+  var y = +parts[0], m = +parts[1] - 1 + delta;
+  if (m < 0) { m = 11; y--; }
+  if (m > 11) { m = 0; y++; }
+  App.adminCalMonth = y + "-" + pad2(m + 1);
+  render();
+}
+function openAdminDay(iso) {
+  App.adminSelectedDay = iso;
+  App.bulk.data = loadAllPlayerData();
+  nav("adminDayDetail");
+}
+function screenAdminDayDetail() {
+  var iso = App.adminSelectedDay;
+  var wd = weekdayOfIso(iso) === 0 ? 7 : weekdayOfIso(iso);
+  var wdNames = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+
+  var html = '<div class="header"><div><div class="title">' + wdNames[wd] + ' ' + fmtShort(iso) + '</div><div class="sub">Détail du jour</div></div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+
+  if (wd < 1 || wd > 6) {
+    html += '<div class="empty">Dimanche : aucune échéance particulière ce jour-là.</div></div>';
+    return html;
+  }
+
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
+    players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      var pdata = App.bulk.data[p.id];
+      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, dayDetailTargetTab(wd)) + '</div>';
+      html += dayDetailContent(pdata, iso, wd);
+      html += '</div>';
+    });
+  });
+
+  html += '</div>';
+  return html;
+}
+function dayDetailTargetTab(wd) {
+  if (wd >= 1 && wd <= 4) return "seance";
+  if (wd === 5) return "hooperJeudi";
+  if (wd === 6) return "hooperWeekend";
+  return "identite";
+}
+function dayDetailContent(pdata, iso, wd) {
+  var html = "";
+  if (wd >= 1 && wd <= 4) {
+    var obj = pdata.objectifs.find(function (e) { return e.date === iso; });
+    var ressAvant = pdata.ressenti.find(function (e) { return e.date === iso && e.moment === "avant"; });
+    var ressApres = pdata.ressenti.find(function (e) { return e.date === iso && e.moment === "apres"; });
+    if (!obj && !ressAvant && !ressApres) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Ma séance : pas rempli.</div>';
+    else {
+      if (obj) html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Objectifs</b> — ' + esc(obj.theme || "(sans thème)") + ' · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) + (obj.objOffensif ? '<br>Off : ' + esc(obj.objOffensif) : "") + (obj.objDefensif ? '<br>Def : ' + esc(obj.objDefensif) : "") + '</div>';
+      if (ressAvant) html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Avant séance</b> — forme ' + ressAvant.forme + '/10, sommeil ' + ressAvant.sommeil + '/10, motivation ' + ressAvant.motivation + '/10</div>';
+      if (ressApres) html += '<div style="font-size:12px;color:#334036"><b>Après séance</b> — charge ' + ressApres.charge + '/10, plaisir ' + ressApres.plaisirRess + '/10' + (ressApres.appreciation ? '<br>' + esc(ressApres.appreciation) : "") + '</div>';
+    }
+  }
+  if (wd === 4) {
+    var mon = mondayOf(iso);
+    var sem = pdata.semaines.find(function (s) { return s.weekStart === mon; });
+    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd"><b style="font-size:11px;color:var(--rouge)">MA SEMAINE</b>';
+    if (sem && (sem.perfJoueur != null || sem.investJoueur != null || sem.perfCoach != null || sem.investCoach != null)) {
+      html += '<div style="font-size:12px;color:#334036;margin-top:4px">Performance : joueur ' + (sem.perfJoueur || "—") + ", coach " + (sem.perfCoach || "—") +
+        ' · Investissement : joueur ' + (sem.investJoueur || "—") + ", coach " + (sem.investCoach || "—") + '</div>';
+    } else html += '<div style="font-size:12px;color:var(--gris);font-style:italic;margin-top:4px">Pas encore rempli.</div>';
+    html += '</div>';
+  }
+  if (wd === 5) {
+    var jeudi = addDaysIso(iso, -1);
+    var hj = pdata.ficheVendredi.find(function (e) { return e.date === jeudi; });
+    if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (jeudi soir) : pas rempli.</div>';
+    else {
+      html += '<div style="font-size:12px;color:#334036">Sommeil ' + hj.sommeil + '/10 · Forme mentale ' + hj.formeMentale + '/10 · Forme physique ' + hj.formePhysique + '/10 · Confiance ' + hj.confiance + '/10</div>';
+      if (hj.pointsForts) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Point fort :</b> ' + esc(hj.pointsForts) + '</div>';
+      if (hj.pointsAmeliorer) html += '<div style="font-size:12px;color:#334036"><b>Point faible :</b> ' + esc(hj.pointsAmeliorer) + '</div>';
+      html += '<div style="font-size:12px;font-weight:700;color:' + (hj.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + ';margin-top:2px">' + (hj.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div>';
+    }
+  }
+  if (wd === 6) {
+    var hw = pdata.hooperLundi.find(function (e) { return e.date === iso; });
+    if (!hw) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper week-end : pas rempli.</div>';
+    else {
+      html += '<div style="font-size:12px;color:#334036">A joué avec son club : ' + esc(hw.aJoueClub || "—") + '</div>';
+      if (hw.pointsForts) html += '<div style="font-size:12px;color:#334036"><b>Points forts :</b> ' + esc(hw.pointsForts) + '</div>';
+      if (hw.pointsFaibles) html += '<div style="font-size:12px;color:#334036"><b>Points faibles :</b> ' + esc(hw.pointsFaibles) + '</div>';
+      html += '<div style="font-size:12px;color:#334036;margin-top:2px">A bien joué ' + hw.bienJoue + '/5 · Forme physique ' + hw.formePhysiqueWE + '/5 · Heureux du match ' + hw.heureuxMatch + '/5 · Prêt lundi ' + hw.pretLundi + '/5</div>';
+      if (hw.infos) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Infos :</b> ' + esc(hw.infos) + '</div>';
+      if (hw.resumeMatchCoach || hw.commentaireDivers) {
+        html += '<div style="margin-top:6px;background:var(--or-clair);border:1px solid var(--or-bord);border-radius:6px;padding:6px"><div style="font-size:10px;font-weight:700;color:var(--rouge)">ÉDUCATEUR</div>' +
+          (hw.resumeMatchCoach ? '<div style="font-size:12px">' + esc(hw.resumeMatchCoach) + '</div>' : "") +
+          (hw.commentaireDivers ? '<div style="font-size:12px">' + esc(hw.commentaireDivers) + '</div>' : "") + '</div>';
+      }
+    }
+  }
+  return html;
+}
+
 function screenAdminHome() {
   var filtered = players.filter(function (p) { return (p.prenom + " " + p.nom).toLowerCase().indexOf((App.search || "").toLowerCase()) !== -1; });
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
@@ -1843,27 +2013,16 @@ function screenAdminHome() {
   var html = '<div class="header"><div class="title">Administration</div><div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="nav(\'welcome\')">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
 
+  html += adminCalendarHtml(activityData);
+
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (tous les joueurs, dernier avis)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openManquants()">🚦 Qui a rempli ? (code couleur)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminPlanning\')">📅 Voir / modifier le planning</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminInfos\')">📋 Infos, documents, projet & charte</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (par semaine, répondre)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openManquants()">🚦 Qui a rempli ? (code couleur)</button><div style="height:16px"></div>';
-
-  if (clubs.length > 0) {
-    html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Codes entraîneurs (par club)</div>';
-    clubs.forEach(function (c) {
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee">' +
-        '<div style="font-size:13px"><div style="font-weight:700;color:#1C2620">' + esc(c.club) + '</div><div style="font-size:11px;color:var(--gris)">' + c.players.length + ' joueur' + (c.players.length > 1 ? "s" : "") + '</div></div>' +
-        '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(c.code || "…") + '</span>' +
-        '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateClubCode(\'' + esc(c.club).replace(/'/g, "\\'") + '\')">Régénérer</button></div></div>';
-    });
-    html += '<div style="font-size:11px;color:var(--gris);margin-top:8px">Ce code donne accès à tous les joueurs du club.</div></div>';
-  } else {
-    html += '<div style="font-size:12px;color:var(--gris);margin-bottom:14px">Aucun code entraîneur pour l\'instant : renseigne le club d\'un joueur (onglet Identité) pour en générer un.</div>';
-  }
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:16px"></div>';
 
   html += '<input type="text" style="margin-bottom:14px" placeholder="Rechercher un joueur..." value="' + esc(App.search) + '" oninput="App.search=this.value; render()">';
   html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;color:var(--gris)">' +
@@ -1906,10 +2065,95 @@ function screenAdminHome() {
     });
   });
 
+  if (clubs.length > 0) {
+    html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Codes entraîneurs (par club)</div>';
+    clubs.forEach(function (c) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee">' +
+        '<div style="font-size:13px"><div style="font-weight:700;color:#1C2620">' + esc(c.club) + '</div><div style="font-size:11px;color:var(--gris)">' + c.players.length + ' joueur' + (c.players.length > 1 ? "s" : "") + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(c.code || "…") + '</span>' +
+        '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateClubCode(\'' + esc(c.club).replace(/'/g, "\\'") + '\')">Régénérer</button></div></div>';
+    });
+    html += '<div style="font-size:11px;color:var(--gris);margin-top:8px">Ce code donne accès à tous les joueurs du club.</div></div>';
+  } else {
+    html += '<div style="font-size:12px;color:var(--gris);margin-bottom:14px">Aucun code entraîneur pour l\'instant : renseigne le club d\'un joueur (onglet Identité) pour en générer un.</div>';
+  }
+
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Encadrants transversaux (accès ciblé, hors club)</div>' +
+    '<div style="font-size:11px;color:var(--gris);margin-bottom:10px">Pour un adjoint suivant certains joueurs en particulier (ex : responsable des gardiens), quel que soit leur club.</div>';
+  (info.specialStaff || []).forEach(function (s) {
+    var names = players.filter(function (p) { return s.playerIds.indexOf(p.id) !== -1; }).map(function (p) { return p.prenom; }).join(", ");
+    html += '<div style="padding:8px 0;border-bottom:1px solid #eee">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:13px;font-weight:700;color:#1C2620">' + esc(s.nom) + '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(s.code) + '</span>' +
+      '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateStaffCode(\'' + s.id + '\')">Régénérer</button>' +
+      '<button style="border:none;background:none;color:#B3412E;font-size:11px;cursor:pointer" onclick="deleteSpecialStaff(\'' + s.id + '\')">Suppr.</button></div></div>' +
+      '<div style="font-size:11px;color:var(--gris);margin-top:2px">' + esc(names || "Aucun joueur assigné") + '</div></div>';
+  });
+  if (!App.showAddStaff) {
+    html += '<button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="App.showAddStaff=true; resetDraft({nom:\'\',playerIds:[]}); render()">+ Ajouter un encadrant</button>';
+  } else {
+    var sdraft = draft;
+    html += '<div style="margin-top:10px">' + fieldInput("nom", "Nom de l\'encadrant", sdraft.nom, "Ex : Sylvain") +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 6px">' +
+      '<span style="font-size:12px;font-weight:700;color:#5b6b5f">Joueurs concernés</span>' +
+      '<button type="button" style="border:none;background:none;color:var(--rouge);font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline" onclick="selectAllStaffPlayers()">Tout sélectionner (accès complet)</button></div>' +
+      '<div style="max-height:220px;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:8px">' +
+      players.slice().sort(byNomPrenom).map(function (p) {
+        var checked = (sdraft.playerIds || []).indexOf(p.id) !== -1;
+        return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:#334036"><input type="checkbox" ' + (checked ? "checked" : "") + ' onchange="toggleStaffPlayer(\'' + p.id + '\', this.checked)"> ' + esc(p.prenom) + " " + esc(p.nom) + '</label>';
+      }).join("") + '</div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn btn-ghost" onclick="App.showAddStaff=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveSpecialStaff()">Créer</button></div></div>';
+  }
+  html += '</div>';
+
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:10px">Mon code d\'accès administrateur</div>';
+  if (!App.showChangeAdminCode) {
+    html += '<div style="font-size:13px;color:#334036;margin-bottom:8px">Code actuel : <span style="font-family:monospace;font-weight:700;color:var(--rouge)">' + esc(info.adminCode) + '</span></div>' +
+      '<button class="btn btn-ghost btn-block" onclick="App.showChangeAdminCode=true; resetDraft({newCode:\'\'}); render()">Changer mon code</button>';
+  } else {
+    html += fieldInput("newCode", "Nouveau code", draft.newCode, "Ex : 2627") +
+      '<div class="row"><button class="btn btn-ghost" onclick="App.showChangeAdminCode=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveAdminCode()">Enregistrer</button></div>';
+  }
+  html += '</div>';
+
   html += '</div>';
   return html;
 }
 function regenerateClubCode(club) { info.clubCodes[club] = generateCode(club); saveInfo(); render(); }
+function toggleStaffPlayer(playerId, checked) {
+  draft.playerIds = draft.playerIds || [];
+  if (checked) { if (draft.playerIds.indexOf(playerId) === -1) draft.playerIds.push(playerId); }
+  else { draft.playerIds = draft.playerIds.filter(function (id) { return id !== playerId; }); }
+}
+function selectAllStaffPlayers() {
+  draft.playerIds = players.map(function (p) { return p.id; });
+  render();
+}
+function saveAdminCode() {
+  if (!draft.newCode || !draft.newCode.trim()) return;
+  info.adminCode = draft.newCode.trim();
+  saveInfo();
+  App.showChangeAdminCode = false;
+  render();
+}
+function saveSpecialStaff() {
+  if (!draft.nom || !draft.nom.trim()) return;
+  if (!info.specialStaff) info.specialStaff = [];
+  info.specialStaff.push({ id: uid(), nom: draft.nom.trim(), code: generateCode(draft.nom.trim()), playerIds: draft.playerIds || [] });
+  saveInfo();
+  App.showAddStaff = false;
+  render();
+}
+function regenerateStaffCode(id) {
+  var s = info.specialStaff.find(function (x) { return x.id === id; });
+  if (s) { s.code = generateCode(s.nom); saveInfo(); render(); }
+}
+function deleteSpecialStaff(id) {
+  info.specialStaff = (info.specialStaff || []).filter(function (s) { return s.id !== id; });
+  saveInfo();
+  render();
+}
 function addPlayer() {
   if (!draft.prenom || !draft.nom) return;
   players.push({
@@ -2137,14 +2381,14 @@ function renderBulkDateEntry(pdata, playerId) {
   if (type === "hooperJeudi") {
     var e = pick(pdata.ficheVendredi);
     if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Sommeil ' + e.sommeil + '/10 · Forme ' + e.etatForme + '/10 · Confiance ' + e.confiance + '/10</div>' +
-      (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Sommeil ' + e.sommeil + '/10 · Forme mentale ' + e.formeMentale + '/10 · Forme physique ' + e.formePhysique + '/10 · Confiance ' + e.confiance + '/10</div>' +
+      (e.pointsForts ? '<div><b>Point fort :</b> ' + esc(e.pointsForts) + '</div>' : "") +
       '<div style="font-weight:700;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div></div>';
   }
   if (type === "hooperWeekend") {
     var e = pick(pdata.hooperLundi);
     if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score Hooper : <b>' + e.score + '/25</b></div>';
+    var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score Hooper : <b>' + e.score + '/20</b></div>';
     if (e.resumeMatchCoach || e.commentaireDivers) {
       html += '<div style="margin-top:4px;background:var(--or-clair);border:1px solid var(--or-bord);border-radius:6px;padding:6px"><div style="font-size:10px;font-weight:700;color:var(--rouge)">ÉDUCATEUR</div>' +
         (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") +
@@ -2184,7 +2428,7 @@ function openManquants() {
   if (!App.manquantsDate) App.manquantsDate = todayIso();
   nav("adminManquants");
 }
-var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (w-e)"], ["semaine", "Ma semaine"]];
+var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (samedi)"], ["semaine", "Ma semaine"]];
 function manquantsListFor(pdata, type) {
   if (type === "seance") {
     var a = pdata.objectifs || [], b = pdata.ressenti || [];
@@ -2198,7 +2442,7 @@ function manquantsListFor(pdata, type) {
 function manquantsSummary(pdata, entry, type) {
   if (!entry) return "";
   if (type === "hooperJeudi") return entry.pointsForts || entry.infosEntraineur || (entry.presenceVendredi ? "Présence : " + entry.presenceVendredi : "");
-  if (type === "hooperWeekend") return entry.resumeMatchCoach || entry.commentaireDivers || (entry.score != null ? "Score Hooper : " + entry.score + "/25" : "");
+  if (type === "hooperWeekend") return entry.resumeMatchCoach || entry.commentaireDivers || (entry.score != null ? "Score Hooper : " + entry.score + "/20" : "");
   if (type === "seance") return entry.theme || entry.appreciation || "";
   return "";
 }
@@ -2257,37 +2501,29 @@ function openEducateurAvis() {
   nav("adminEducateurAvis");
 }
 function screenAdminEducateurAvis() {
-  var items = [];
-  players.forEach(function (p) {
-    var pdata = App.bulk.data[p.id];
-    pdata.hooperLundi.forEach(function (e) {
-      if (e.resumeMatchCoach || e.commentaireDivers) items.push({ player: p, entry: e });
-    });
-  });
-  items.sort(function (a, b) { return a.entry.date < b.entry.date ? 1 : -1; });
-  var weekGroups = [];
-  items.forEach(function (item) {
-    var ws = mondayOf(item.entry.date), we = sundayOf(item.entry.date);
-    var group = weekGroups.find(function (g) { return g.weekStart === ws; });
-    if (!group) { group = { weekStart: ws, weekEnd: we, items: [] }; weekGroups.push(group); }
-    group.items.push(item);
-  });
+  var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
 
   var html = '<div class="header"><div class="title">Avis des éducateurs</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' +
-    '<div class="card-gold" style="border-radius:10px;padding:12px"><div style="font-size:12px;color:#7A1420">Tous les avis laissés par les éducateurs, classés par semaine. Réponds directement ici.</div></div>';
+    '<div class="card-gold" style="border-radius:10px;padding:12px"><div style="font-size:12px;color:#7A1420">Tous les joueurs, dans l\'ordre, avec le dernier avis laissé par leur éducateur. Réponds directement ici.</div></div>';
 
-  if (weekGroups.length === 0) html += '<div class="empty">Aucun avis d\'éducateur pour l\'instant.</div>';
-  weekGroups.forEach(function (g) {
-    html += '<div style="font-size:12px;font-weight:800;color:var(--noir);margin:14px 2px 8px;text-transform:uppercase">Semaine du ' + fmtShort(g.weekStart) + ' au ' + fmtShort(g.weekEnd) + '</div>';
-    g.items.forEach(function (item) {
-      var p = item.player, e = item.entry;
+  groups.forEach(function (g) {
+    html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:12px 2px 6px">' + esc(g) + '</div>';
+    players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
+      var pdata = App.bulk.data[p.id];
+      var withComment = (pdata.hooperLundi || []).filter(function (e) { return e.resumeMatchCoach || e.commentaireDivers; });
+      var latest = withComment.length ? withComment.sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0] : null;
+
       html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<div>' + clickableName(p, "hooperWeekend") + '</div><div style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</div></div>' +
-        '<div style="background:#f7f8f4;border-radius:8px;padding:8px;font-size:13px;color:#334036;margin-bottom:8px">' +
-        (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") + '</div>' +
+        '<div>' + clickableName(p, "hooperWeekend") + '</div>' + (latest ? '<div style="font-size:11px;color:var(--gris)">' + fmtShort(latest.date) + '</div>' : '') + '</div>';
+      if (!latest) {
+        html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucun avis d\'éducateur pour l\'instant.</div></div>';
+        return;
+      }
+      html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;font-size:13px;color:#334036;margin-bottom:8px">' +
+        (latest.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(latest.resumeMatchCoach) + '</div>' : "") + (latest.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(latest.commentaireDivers) + '</div>' : "") + '</div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">TA RÉPONSE</div>' +
-        '<div class="voice-wrap"><textarea style="min-height:50px" oninput="setBulkHooperReponse(\'' + p.id + '\',\'' + e.id + '\',this.value)">' + esc(e.reponseAdmin || "") + '</textarea></div></div>';
+        '<div class="voice-wrap"><textarea style="min-height:50px" oninput="setBulkHooperReponse(\'' + p.id + '\',\'' + latest.id + '\',this.value)">' + esc(latest.reponseAdmin || "") + '</textarea></div></div>';
     });
   });
   html += '</div>';
@@ -2437,7 +2673,7 @@ function screenWelcome() {
       (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
       '<button class="btn btn-accent btn-block" onclick="submitCode()">Accéder à la fiche</button>' +
       '<div class="center" style="margin:22px 0 6px;font-size:12px;color:#c3c8bd">— — —</div>' +
-      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:8px" onclick="nav(\'adminLogin\')">Accès administrateur (Antoine)</button>' +
+      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:8px" onclick="nav(\'adminLogin\')">Accès staff</button>' +
     '</div>';
 }
 function setRoleChoice(r) { App.roleChoice = r; render(); }
@@ -2458,6 +2694,14 @@ function submitCode() {
     App.roleChoice = "entraineur";
     App.activeClub = club.club;
     nav("clubHome");
+    return;
+  }
+  var staff = (info.specialStaff || []).find(function (s) { return s.code && s.code.toUpperCase() === entered; });
+  if (staff) {
+    App.error = "";
+    App.roleChoice = "entraineur";
+    App.activeSpecialStaffId = staff.id;
+    nav("specialStaffHome");
     return;
   }
   App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
@@ -2489,6 +2733,7 @@ function render() {
     case "player": body = screenPlayerHome(false); break;
     case "adminPlayer": body = screenPlayerHome(true); break;
     case "clubHome": body = screenClubHome(); break;
+    case "specialStaffHome": body = screenSpecialStaffHome(); break;
     case "adminHome": body = screenAdminHome(); break;
     case "adminPlanning": body = screenAdminPlanning(); break;
     case "adminInfos": body = screenAdminInfos(); break;
@@ -2497,6 +2742,7 @@ function render() {
     case "adminBulkDate": body = screenAdminBulkDate(); break;
     case "adminEducateurAvis": body = screenAdminEducateurAvis(); break;
     case "adminManquants": body = screenAdminManquants(); break;
+    case "adminDayDetail": body = screenAdminDayDetail(); break;
     case "adminImport": body = screenAdminImport(); break;
     default: body = screenWelcome();
   }
@@ -2517,8 +2763,8 @@ var PH_TABS = [
   { key: "seance", label: "Ma séance", icon: "🎯" },
   { key: "semaine", label: "Ma semaine", icon: "🗓️" },
   { key: "hooperJeudi", label: "Hooper (jeudi)", icon: "📅" },
+  { key: "hooperWeekend", label: "Hooper (samedi)", icon: "🛏️" },
   { key: "matchSection", label: "Match section", icon: "📋" },
-  { key: "hooperWeekend", label: "Hooper (w-e)", icon: "🛏️" },
   { key: "medical", label: "Médical", icon: "📏" },
   { key: "tests", label: "Tests", icon: "⏱️" },
 ];
