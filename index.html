@@ -249,7 +249,7 @@ function syncOnLoad() {
     if (!known["sef-players-v1"]) Storage.set("sef-players-v1", players);
     if (!known["sef-info-v1"]) Storage.set("sef-info-v1", info);
     if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
-    render();
+    if (App.screen !== "welcome" && App.screen !== "adminLogin") render();
   });
 }
 
@@ -263,7 +263,7 @@ function periodicSync() {
       players = Storage.get("sef-players-v1") || players;
       info = Storage.get("sef-info-v1") || info;
       matches = Storage.get("sef-matches-v1") || matches;
-      render();
+      if (App.screen !== "welcome" && App.screen !== "adminLogin") render();
     }
   });
 }
@@ -440,13 +440,14 @@ function computeEcheances(pdata) {
   var hjColor = hjFilled ? "vert" : (isoWd < 4 ? "jaune" : (isoWd === 4 ? "orange" : "rouge"));
   items.push({ label: "Hooper (jeudi, pour ton club)", color: hjColor, detail: hjFilled ? "Fait" : (isoWd < 4 ? "À faire avant vendredi" : (isoWd === 4 ? "À faire aujourd'hui" : "En retard")) });
 
-  var hwFilled = pdata.hooperLundi.some(function (e) { return e.date === monday; });
+  var samedi = addDaysIso(monday, 5);
+  var hwFilled = pdata.hooperLundi.some(function (e) { return e.date === samedi; });
   var hwColor, hwDetail;
   if (hwFilled) { hwColor = "vert"; hwDetail = "Fait"; }
-  else if (isoWd === 7) { hwColor = "jaune"; hwDetail = "À faire demain matin"; }
-  else if (isoWd === 1) { hwColor = "orange"; hwDetail = "À faire ce matin"; }
-  else { hwColor = "rouge"; hwDetail = "En retard depuis lundi"; }
-  items.push({ label: "Hooper (week-end, après le match club)", color: hwColor, detail: hwDetail });
+  else if (isoWd < 6) { hwColor = "jaune"; hwDetail = "À faire samedi, après le match"; }
+  else if (isoWd === 6) { hwColor = "orange"; hwDetail = "À faire aujourd'hui, après le match"; }
+  else { hwColor = "rouge"; hwDetail = "En retard depuis samedi"; }
+  items.push({ label: "Hooper (samedi, après le match club)", color: hwColor, detail: hwDetail });
 
   var recentMatches = matches.filter(function (m) { var diff = Math.round((new Date(today) - new Date(m.date)) / 86400000); return diff >= 0 && diff <= 7; });
   if (recentMatches.length > 0) {
@@ -1559,14 +1560,14 @@ function scale5(name, label, value, disabled) {
 function tabHooperWeekend(player, pdata, isAdmin, role) {
   if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : todayIso(); }
   var current = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
-  var blank = { aJoueClub: "Oui", pointsForts: "", pointsFaibles: "", bienJoue: 3, formePhysiqueWE: 3, heureuxMatch: 3, pretLundi: 3, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
+  var blank = { aJoueClub: "Oui", dureeJeuClub: "", posteJoueClub: "", pointsForts: "", pointsFaibles: "", bienJoue: 3, formePhysiqueWE: 3, heureuxMatch: 3, pretLundi: 3, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
   if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
   var f = draft;
   var canEditJoueur = isAdmin || role === "joueur";
   var canEditCoach = isAdmin || role === "entraineur";
   var score = f.bienJoue + f.formePhysiqueWE + f.heureuxMatch + f.pretLundi;
 
-  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Partie joueur à remplir le lundi matin après le match du week-end. Partie entraîneur réservée au responsable de la section.</div>';
+  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Hooper d\'après-match du samedi — à remplir le samedi, juste après le match avec ton club. Partie entraîneur réservée au responsable de la section.</div>';
   var hwFilled = new Set();
   pdata.hooperLundi.forEach(function (e) { hwFilled.add(e.date); });
   html += miniCalendar("hw", App.hooperWeekendDate, hwFilled, "setHooperWeekendDate") +
@@ -1575,7 +1576,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">JOUEUR</div>';
   if (canEditJoueur) {
     html += ouiNonPicker("aJoueClub", "As-tu joué avec ton club aujourd'hui ?", f.aJoueClub) +
-      (f.aJoueClub === "Oui" ? '<div class="field"><label>Points forts</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div><div class="field"><label>Points faibles</label>' + voiceTextarea("pointsFaibles", f.pointsFaibles, "") + '</div>' : "") +
+      (f.aJoueClub === "Oui" ? fieldInput("dureeJeuClub", "Combien de temps de jeu ? (ex : 45 min, tout le match)", f.dureeJeuClub) + fieldInput("posteJoueClub", "Quel poste as-tu joué ?", f.posteJoueClub) + '<div class="field"><label>Points forts</label>' + voiceTextarea("pointsForts", f.pointsForts, "") + '</div><div class="field"><label>Points faibles</label>' + voiceTextarea("pointsFaibles", f.pointsFaibles, "") + '</div>' : "") +
       scale5("bienJoue", "As-tu bien joué ?", f.bienJoue) + scale5("formePhysiqueWE", "Es-tu en forme physique ?", f.formePhysiqueWE) +
       scale5("heureuxMatch", "Es-tu heureux de ton match ?", f.heureuxMatch) + scale5("pretLundi", "Es-tu prêt pour revenir au collège en forme lundi ?", f.pretLundi) +
       '<div style="font-size:13px;font-weight:700;color:var(--noir);margin:6px 0 14px">Score Hooper : ' + score + '/20</div>' +
@@ -1584,7 +1585,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   } else if (!current) {
     html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Le joueur n\'a pas encore répondu pour cette date.</div>';
   } else {
-    html += readOnlyRows([["A joué avec son club", f.aJoueClub], ["Points forts", f.pointsForts], ["Points faibles", f.pointsFaibles], ["A bien joué", f.bienJoue + "/5"], ["Forme physique", f.formePhysiqueWE + "/5"], ["Heureux du match", f.heureuxMatch + "/5"], ["Prêt pour lundi", f.pretLundi + "/5"], ["Infos", f.infos]]);
+    html += readOnlyRows([["A joué avec son club", f.aJoueClub], ["Durée de jeu", f.dureeJeuClub], ["Poste joué", f.posteJoueClub], ["Points forts", f.pointsForts], ["Points faibles", f.pointsFaibles], ["A bien joué", f.bienJoue + "/5"], ["Forme physique", f.formePhysiqueWE + "/5"], ["Heureux du match", f.heureuxMatch + "/5"], ["Prêt pour lundi", f.pretLundi + "/5"], ["Infos", f.infos]]);
   }
   html += '</div>';
 
@@ -1989,7 +1990,7 @@ function dayDetailContent(pdata, iso, wd) {
     var hw = pdata.hooperLundi.find(function (e) { return e.date === iso; });
     if (!hw) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper week-end : pas rempli.</div>';
     else {
-      html += '<div style="font-size:12px;color:#334036">A joué avec son club : ' + esc(hw.aJoueClub || "—") + '</div>';
+      html += '<div style="font-size:12px;color:#334036">A joué avec son club : ' + esc(hw.aJoueClub || "—") + (hw.dureeJeuClub ? ' (' + esc(hw.dureeJeuClub) + (hw.posteJoueClub ? ', ' + esc(hw.posteJoueClub) : '') + ')' : '') + '</div>';
       if (hw.pointsForts) html += '<div style="font-size:12px;color:#334036"><b>Points forts :</b> ' + esc(hw.pointsForts) + '</div>';
       if (hw.pointsFaibles) html += '<div style="font-size:12px;color:#334036"><b>Points faibles :</b> ' + esc(hw.pointsFaibles) + '</div>';
       html += '<div style="font-size:12px;color:#334036;margin-top:2px">A bien joué ' + hw.bienJoue + '/5 · Forme physique ' + hw.formePhysiqueWE + '/5 · Heureux du match ' + hw.heureuxMatch + '/5 · Prêt lundi ' + hw.pretLundi + '/5</div>';
@@ -2253,7 +2254,7 @@ function screenAdminBulkMatch() {
   if (recent.length > 0) {
     html += '<div class="card"><div style="font-size:13px;font-weight:800;color:var(--noir);margin-bottom:10px">Historique des matchs de la section</div>';
     recent.forEach(function (m) {
-      var nb = Object.values(App.bulk.data).filter(function (pd) { return pd.bilans.some(function (b) { return b.matchId === m.id && b.appreciationJoueur; }); }).length;
+      var nb = Object.values(App.bulk.data).filter(function (pd) { return pd.bilans.some(function (b) { return b.matchId === m.id && b.commentMatch; }); }).length;
       html += '<div onclick="selectBulkMatch(\'' + m.id + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #eee;cursor:pointer;background:' + (App.bulk.matchId === m.id ? "var(--or-clair)" : "transparent") + '">' +
         '<div><div style="font-size:13px;font-weight:700;color:var(--noir)">' + fmtShort(m.date) + ' · vs ' + esc(m.adversaire || "?") + '</div><div style="font-size:11px;color:var(--gris)">' + nb + ' joueur' + (nb > 1 ? "s ont" : " a") + ' donné son appréciation</div></div>' +
         '<div style="font-weight:800;color:var(--rouge);font-size:14px">' + esc(m.scoreFinal || "—") + '</div></div>';
@@ -2277,10 +2278,15 @@ function screenAdminBulkMatch() {
       html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
       players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
         var pdata = App.bulk.data[p.id];
-        var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { appreciationJoueur: "", noteJoueur: null, commentaireProf: "", noteProf: null };
+        var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { commentMatch: "", dispositif: "", objectifMatch: "", objectifResultat: "", noteJoueur: null, commentaireProf: "", noteProf: null };
         html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "matchSection") + '</div>';
-        if (entry.appreciationJoueur) html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#334036">' + esc(entry.appreciationJoueur) + (entry.noteJoueur != null ? ' <b>(' + entry.noteJoueur + '/10)</b>' : "") + '</div>';
-        else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore donné son appréciation.</div>';
+        if (entry.commentMatch || entry.dispositif) {
+          html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#334036">' +
+            (entry.dispositif ? '<div><b>Dispositif :</b> ' + esc(entry.dispositif) + '</div>' : "") +
+            (entry.objectifMatch ? '<div><b>Objectif :</b> ' + esc(entry.objectifMatch) + (entry.objectifResultat ? ' ' + resultBadge(entry.objectifResultat) : "") + '</div>' : "") +
+            (entry.commentMatch ? '<div style="margin-top:4px">' + esc(entry.commentMatch) + '</div>' : "") +
+            (entry.noteJoueur != null ? ' <b>(' + entry.noteJoueur + '/10)</b>' : "") + '</div>';
+        } else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore donné son appréciation.</div>';
         html += '<div class="voice-wrap"><textarea placeholder="Ton commentaire" oninput="setBulkComment(\'' + p.id + '\',\'commentaireProf\',this.value)">' + esc(entry.commentaireProf) + '</textarea></div>' +
           '<div style="font-size:11px;color:var(--gris);margin:8px 0 4px">Note / 10</div>' +
           '<div style="display:flex;gap:4px;flex-wrap:wrap">' + Array.from({ length: 11 }, function (_, n) { return n; }).map(function (n) {
@@ -2326,7 +2332,7 @@ function deleteBulkMatch() {
 function setBulkComment(playerId, field, value) {
   var pdata = App.bulk.data[playerId];
   var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; });
-  if (!entry) { entry = { id: uid(), matchId: App.bulk.matchId, appreciationJoueur: "", noteJoueur: null, commentaireProf: "", noteProf: null }; pdata.bilans.push(entry); }
+  if (!entry) { entry = { id: uid(), matchId: App.bulk.matchId, commentMatch: "", noteJoueur: null, commentaireProf: "", noteProf: null }; pdata.bilans.push(entry); }
   entry[field] = value;
   savePlayerData(playerId, pdata);
   if (field === "noteProf") render();
@@ -2668,7 +2674,7 @@ function screenWelcome() {
         '<button class="pill ' + (App.roleChoice === "entraineur" ? "active" : "") + '" style="flex:1" onclick="setRoleChoice(\'entraineur\')">Éducateur</button>' +
       '</div>' +
       '<div class="field"><label>Code d\'accès (joueur, ou code club pour un éducateur)</label>' +
-        '<input type="text" id="code-input" style="text-transform:uppercase;letter-spacing:1px" placeholder="Ex : Arnold1234 ou Argentan5678" value="' + esc(App.code) + '" oninput="App.code=this.value">' +
+        '<input type="text" id="code-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:1px" placeholder="Ex : Arnold1234 ou Argentan5678" value="' + esc(App.code) + '" oninput="App.code=this.value">' +
       '</div>' +
       (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
       '<button class="btn btn-accent btn-block" onclick="submitCode()">Accéder à la fiche</button>' +
@@ -2679,13 +2685,33 @@ function screenWelcome() {
 function setRoleChoice(r) { App.roleChoice = r; render(); }
 function submitCode() {
   var entered = (App.code || "").trim().toUpperCase();
+  if (trySubmitCode(entered)) return;
+  if (SYNC_URL && navigator.onLine) {
+    App.error = "Vérification...";
+    render();
+    pullAllFromRemote().then(function (result) {
+      if (result.changed) {
+        players = Storage.get("sef-players-v1") || players;
+        info = Storage.get("sef-info-v1") || info;
+      }
+      if (!trySubmitCode(entered)) {
+        App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
+        render();
+      }
+    });
+    return;
+  }
+  App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
+  render();
+}
+function trySubmitCode(entered) {
   var player = players.find(function (p) { return p.code.toUpperCase() === entered; });
   if (player) {
     App.error = "";
     App.roleChoice = "joueur";
     App.activePlayerId = player.id;
     nav("player");
-    return;
+    return true;
   }
   var clubs = clubsFromPlayers();
   var club = clubs.find(function (c) { return c.code && c.code.toUpperCase() === entered; });
@@ -2694,7 +2720,7 @@ function submitCode() {
     App.roleChoice = "entraineur";
     App.activeClub = club.club;
     nav("clubHome");
-    return;
+    return true;
   }
   var staff = (info.specialStaff || []).find(function (s) { return s.code && s.code.toUpperCase() === entered; });
   if (staff) {
@@ -2702,17 +2728,16 @@ function submitCode() {
     App.roleChoice = "entraineur";
     App.activeSpecialStaffId = staff.id;
     nav("specialStaffHome");
-    return;
+    return true;
   }
-  App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
-  render();
+  return false;
 }
 
 function screenAdminLogin() {
   return '<div class="logo-header"><img src="' + LOGO_B64 + '" style="width:64px;height:auto;display:inline-block" alt="Logo Section Excellence Sportive Gace"><div class="app-title">SUIVI SPORT-ÉTUDES</div></div>' +
     '<div style="padding:0 24px 30px">' +
       '<div class="field"><label>Code administrateur</label>' +
-        '<input type="password" value="' + esc(App.adminCodeInput) + '" oninput="App.adminCodeInput=this.value">' +
+        '<input type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(App.adminCodeInput) + '" oninput="App.adminCodeInput=this.value">' +
       '</div>' +
       (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
       '<button class="btn btn-primary btn-block" onclick="submitAdminLogin()">Se connecter</button>' +
@@ -2720,8 +2745,20 @@ function screenAdminLogin() {
     '</div>';
 }
 function submitAdminLogin() {
-  if ((App.adminCodeInput || "").trim() === info.adminCode) { App.error = ""; nav("adminHome"); }
-  else { App.error = "Code administrateur incorrect."; render(); }
+  var entered = (App.adminCodeInput || "").trim();
+  if (entered === info.adminCode) { App.error = ""; nav("adminHome"); return; }
+  if (SYNC_URL && navigator.onLine) {
+    App.error = "Vérification...";
+    render();
+    pullAllFromRemote().then(function (result) {
+      if (result.changed) { info = Storage.get("sef-info-v1") || info; }
+      if (entered === info.adminCode) { App.error = ""; nav("adminHome"); }
+      else { App.error = "Code administrateur incorrect."; render(); }
+    });
+    return;
+  }
+  App.error = "Code administrateur incorrect.";
+  render();
 }
 
 /* ============ RENDER PRINCIPAL ============ */
