@@ -327,6 +327,11 @@ function mondayOf(iso) {
   return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate());
 }
 function sundayOf(iso) { return addDaysIso(mondayOf(iso), 6); }
+function lastSaturday(iso) {
+  var wd = weekdayOfIso(iso); // 0=dim,1=lun,...6=sam
+  var diff = (wd + 1) % 7; // jours depuis le samedi le plus recent (sam=0, dim=1, lun=2, ..., ven=6)
+  return addDaysIso(iso, -diff);
+}
 function weekdayOfIso(iso) {
   var p = iso.split("-");
   return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay(); // 0=dim...6=sam
@@ -349,7 +354,7 @@ function clickableName(p, targetTab) {
 /* ============ MINI CALENDRIER (avec jours remplis colorés) ============ */
 function daysInMonthUTC2(y, m) { return new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); }
 function firstWeekdayMonUTC2(y, m) { return (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7; }
-function miniCalendar(prefix, selectedDate, filledSet, onSelectFn) {
+function miniCalendar(prefix, selectedDate, filledSet, onSelectFn, restrictWeekday) {
   var monthKey = prefix + "CalMonth";
   if (!App[monthKey]) App[monthKey] = selectedDate.slice(0, 7);
   var parts = App[monthKey].split("-");
@@ -363,6 +368,7 @@ function miniCalendar(prefix, selectedDate, filledSet, onSelectFn) {
     '<span style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase">' + MOIS_LONG[m] + " " + y + '</span>' +
     '<button type="button" onclick="shiftMiniCal(\'' + prefix + '\', 1)" style="border:none;background:none;color:var(--rouge);font-weight:700;font-size:18px;cursor:pointer;padding:0 10px">\u203a</button>' +
     '</div>';
+  if (restrictWeekday != null) html += '<div style="font-size:11px;color:var(--gris);margin-bottom:6px">Seul le samedi est sélectionnable ici.</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">' +
     JOURS_LETTRE.map(function (l) { return '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--gris)">' + l + '</div>'; }).join("") + '</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
@@ -372,10 +378,16 @@ function miniCalendar(prefix, selectedDate, filledSet, onSelectFn) {
     var filled = filledSet.has(iso);
     var isSel = iso === selectedDate;
     var isToday = iso === today;
-    html += '<button type="button" onclick="' + onSelectFn + '(\'' + iso + '\')" style="aspect-ratio:1;border-radius:6px;font-size:11px;font-weight:' + (filled ? "800" : "500") +
-      ';cursor:pointer;border:' + (isSel ? "2px solid var(--noir)" : (isToday ? "1px dashed var(--rouge)" : "1px solid #eee")) +
-      ';background:' + (isSel ? "var(--noir)" : (filled ? "#dff3e0" : "#fafaf8")) +
-      ';color:' + (isSel ? "#fff" : (filled ? "#2b6b1f" : "#334036")) + '">' + d + "</button>";
+    var isoWeekday = weekdayOfIso(iso) === 0 ? 7 : weekdayOfIso(iso);
+    var allowed = restrictWeekday == null || isoWeekday === restrictWeekday;
+    if (!allowed) {
+      html += '<div style="aspect-ratio:1;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;color:#c3c8bd;background:#f2f2ef">' + d + '</div>';
+    } else {
+      html += '<button type="button" onclick="' + onSelectFn + '(\'' + iso + '\')" style="aspect-ratio:1;border-radius:6px;font-size:11px;font-weight:' + (filled ? "800" : "500") +
+        ';cursor:pointer;border:' + (isSel ? "2px solid var(--noir)" : (isToday ? "1px dashed var(--rouge)" : "1px solid #eee")) +
+        ';background:' + (isSel ? "var(--noir)" : (filled ? "#dff3e0" : "#fafaf8")) +
+        ';color:' + (isSel ? "#fff" : (filled ? "#2b6b1f" : "#334036")) + '">' + d + "</button>";
+    }
   }
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--gris)"><span style="width:10px;height:10px;border-radius:3px;background:#dff3e0;display:inline-block"></span> Rempli ce jour-là</div>';
@@ -1558,7 +1570,7 @@ function scale5(name, label, value, disabled) {
   return html + '</div></div>';
 }
 function tabHooperWeekend(player, pdata, isAdmin, role) {
-  if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : todayIso(); }
+  if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : lastSaturday(todayIso()); }
   var current = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
   var blank = { aJoueClub: "Oui", dureeJeuClub: "", posteJoueClub: "", pointsForts: "", pointsFaibles: "", bienJoue: 3, formePhysiqueWE: 3, heureuxMatch: 3, pretLundi: 3, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
   if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
@@ -1570,7 +1582,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Hooper d\'après-match du samedi — à remplir le samedi, juste après le match avec ton club. Partie entraîneur réservée au responsable de la section.</div>';
   var hwFilled = new Set();
   pdata.hooperLundi.forEach(function (e) { hwFilled.add(e.date); });
-  html += miniCalendar("hw", App.hooperWeekendDate, hwFilled, "setHooperWeekendDate") +
+  html += miniCalendar("hw", App.hooperWeekendDate, hwFilled, "setHooperWeekendDate", 6) +
     (current ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
 
   html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--rouge);margin-bottom:8px">JOUEUR</div>';
