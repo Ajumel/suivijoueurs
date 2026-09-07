@@ -2083,10 +2083,9 @@ function screenAdminHome() {
     clubs.forEach(function (c) {
       html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee">' +
         '<div style="font-size:13px"><div style="font-weight:700;color:#1C2620">' + esc(c.club) + '</div><div style="font-size:11px;color:var(--gris)">' + c.players.length + ' joueur' + (c.players.length > 1 ? "s" : "") + '</div></div>' +
-        '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(c.code || "…") + '</span>' +
-        '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateClubCode(\'' + esc(c.club).replace(/'/g, "\\'") + '\')">Régénérer</button></div></div>';
+        '<input type="text" value="' + esc(c.code || "") + '" onchange="setClubCode(\'' + esc(c.club).replace(/'/g, "\\'") + '\', this)" style="width:150px;font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700;border:1px solid #d7dcd3;border-radius:6px;padding:4px 6px"></div>';
     });
-    html += '<div style="font-size:11px;color:var(--gris);margin-top:8px">Ce code donne accès à tous les joueurs du club.</div></div>';
+    html += '<div style="font-size:11px;color:var(--gris);margin-top:8px">Ce code donne accès à tous les joueurs du club. Modifie-le directement ici (une confirmation te sera demandée) — plus besoin de "régénérer".</div></div>';
   } else {
     html += '<div style="font-size:12px;color:var(--gris);margin-bottom:14px">Aucun code entraîneur pour l\'instant : renseigne le club d\'un joueur (onglet Identité) pour en générer un.</div>';
   }
@@ -2098,8 +2097,8 @@ function screenAdminHome() {
     html += '<div style="padding:8px 0;border-bottom:1px solid #eee">' +
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
       '<div style="font-size:13px;font-weight:700;color:#1C2620">' + esc(s.nom) + '</div>' +
-      '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700">' + esc(s.code) + '</span>' +
-      '<button style="border:none;background:none;color:var(--gris);font-size:11px;cursor:pointer;text-decoration:underline" onclick="regenerateStaffCode(\'' + s.id + '\')">Régénérer</button>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+      '<input type="text" value="' + esc(s.code) + '" onchange="setStaffCode(\'' + s.id + '\', this)" style="width:130px;font-family:monospace;font-size:12px;color:var(--rouge);font-weight:700;border:1px solid #d7dcd3;border-radius:6px;padding:4px 6px">' +
       '<button style="border:none;background:none;color:#B3412E;font-size:11px;cursor:pointer" onclick="deleteSpecialStaff(\'' + s.id + '\')">Suppr.</button></div></div>' +
       '<div style="font-size:11px;color:var(--gris);margin-top:2px">' + esc(names || "Aucun joueur assigné") + '</div></div>';
   });
@@ -2133,7 +2132,16 @@ function screenAdminHome() {
   html += '</div>';
   return html;
 }
-function regenerateClubCode(club) { info.clubCodes[club] = generateCode(club); saveInfo(); render(); }
+function setClubCode(club, inputEl) {
+  var oldCode = info.clubCodes[club];
+  var newCode = (inputEl.value || "").trim();
+  if (!newCode || newCode === oldCode) { inputEl.value = oldCode; return; }
+  var ok = confirm("Confirmer le changement de code pour \"" + club + "\" ?\n\nAncien code : " + oldCode + "\nNouveau code : " + newCode + "\n\n⚠️ L'éducateur de ce club devra utiliser le NOUVEAU code — l'ancien ne fonctionnera plus.");
+  if (!ok) { inputEl.value = oldCode; return; }
+  info.clubCodes[club] = newCode;
+  saveInfo();
+  render();
+}
 function toggleStaffPlayer(playerId, checked) {
   draft.playerIds = draft.playerIds || [];
   if (checked) { if (draft.playerIds.indexOf(playerId) === -1) draft.playerIds.push(playerId); }
@@ -2158,9 +2166,17 @@ function saveSpecialStaff() {
   App.showAddStaff = false;
   render();
 }
-function regenerateStaffCode(id) {
+function setStaffCode(id, inputEl) {
   var s = info.specialStaff.find(function (x) { return x.id === id; });
-  if (s) { s.code = generateCode(s.nom); saveInfo(); render(); }
+  if (!s) return;
+  var oldCode = s.code;
+  var newCode = (inputEl.value || "").trim();
+  if (!newCode || newCode === oldCode) { inputEl.value = oldCode; return; }
+  var ok = confirm("Confirmer le changement de code pour \"" + s.nom + "\" ?\n\nAncien code : " + oldCode + "\nNouveau code : " + newCode + "\n\n⚠️ Il devra utiliser le NOUVEAU code — l'ancien ne fonctionnera plus.");
+  if (!ok) { inputEl.value = oldCode; return; }
+  s.code = newCode;
+  saveInfo();
+  render();
 }
 function deleteSpecialStaff(id) {
   info.specialStaff = (info.specialStaff || []).filter(function (s) { return s.id !== id; });
