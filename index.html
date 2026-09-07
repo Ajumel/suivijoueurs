@@ -828,6 +828,7 @@ function tabIdentite(player, isAdmin, role, pdata) {
     '</div>';
 
   if (!edit && pdata) html += echeancesHtml(pdata);
+  if (!edit) html += '<button class="btn btn-primary btn-block" style="margin-bottom:14px" onclick="openBilanAnnuel(' + (isAdmin ? "true" : "false") + ')">🗓️ Bilan de l\'année (par mois)</button>';
 
   if (!edit) {
     html += '<div style="margin-top:14px;font-size:14px;color:#334036;line-height:1.8">' +
@@ -897,6 +898,130 @@ function saveIdentite() {
   savePlayers();
   App.identiteEdit = false;
   render();
+}
+
+/* ============ BILAN ANNUEL (par mois puis par categorie) ============ */
+function openBilanAnnuel(isAdmin) { App.bilanReturnScreen = isAdmin ? "adminPlayer" : "player"; nav("bilanAnnuel"); }
+function buildBilanAnnuel(pdata) {
+  var months = {};
+  function ensureMonth(key) {
+    if (!months[key]) months[key] = { seance: [], semaine: [], hooperVendredi: [], hooperSamedi: [], matchs: [], medical: [], tests: [] };
+    return months[key];
+  }
+  var seanceByDate = {};
+  (pdata.objectifs || []).forEach(function (o) { seanceByDate[o.date] = seanceByDate[o.date] || { date: o.date }; seanceByDate[o.date].obj = o; });
+  (pdata.ressenti || []).forEach(function (r) { seanceByDate[r.date] = seanceByDate[r.date] || { date: r.date }; seanceByDate[r.date][r.moment] = r; });
+  Object.keys(seanceByDate).sort().forEach(function (date) { ensureMonth(date.slice(0, 7)).seance.push(seanceByDate[date]); });
+
+  (pdata.semaines || []).filter(function (s) { return s.perfJoueur != null || s.perfCoach != null || s.investJoueur != null || s.investCoach != null; })
+    .sort(function (a, b) { return a.weekStart < b.weekStart ? -1 : 1; })
+    .forEach(function (s) { ensureMonth(s.weekStart.slice(0, 7)).semaine.push(s); });
+
+  (pdata.ficheVendredi || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (e) { ensureMonth(e.date.slice(0, 7)).hooperVendredi.push(e); });
+  (pdata.hooperLundi || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (e) { ensureMonth(e.date.slice(0, 7)).hooperSamedi.push(e); });
+
+  (pdata.bilans || []).forEach(function (b) {
+    var m = matches.find(function (x) { return x.id === b.matchId; });
+    if (m) ensureMonth(m.date.slice(0, 7)).matchs.push({ match: m, bilan: b });
+  });
+  Object.keys(months).forEach(function (k) { months[k].matchs.sort(function (a, b) { return a.match.date < b.match.date ? -1 : 1; }); });
+
+  (pdata.mesures || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (e) { ensureMonth(e.date.slice(0, 7)).medical.push(e); });
+  (pdata.tests || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (e) { ensureMonth(e.date.slice(0, 7)).tests.push(e); });
+
+  return months;
+}
+function screenBilanAnnuel() {
+  var player = players.find(function (p) { return p.id === App.activePlayerId; });
+  if (!player) return screenWelcome();
+  var pdata = getPlayerData(player.id);
+  var months = buildBilanAnnuel(pdata);
+  var monthKeys = Object.keys(months).sort();
+
+  var html = '<div class="header"><div><div class="title">Bilan de l\'année</div><div class="sub">' + esc(player.prenom) + " " + esc(player.nom) + '</div></div><button class="btn-header" onclick="nav(App.bilanReturnScreen || \'player\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+
+  html += '<div class="card card-dark center"><div style="font-size:17px;font-weight:800">' + esc(player.prenom) + ' ' + esc(player.nom) + '</div>' +
+    '<div style="font-size:12px;color:var(--or);margin-top:2px">Section Sportive Football — Collège Jean Moulin, Gacé</div>' +
+    '<div style="font-size:12px;color:#e7efe4;margin-top:6px">Bilan de saison — ' + esc(player.groupe) + '</div></div>';
+
+  html += '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:10px">' +
+    '<b>Pour obtenir un PDF :</b> appuie sur le bouton ci-dessous. Une fenêtre d\'impression s\'ouvre — choisis <b>"Enregistrer au format PDF"</b> (au lieu d\'une imprimante) dans la liste des destinations, puis "Enregistrer". Le PDF sera alors dans tes fichiers/téléchargements.</div>';
+  html += '<button class="btn btn-ghost btn-block" style="margin-bottom:14px" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>';
+
+  if (monthKeys.length === 0) html += '<div class="empty">Aucune donnée enregistrée pour l\'instant.</div>';
+
+  monthKeys.forEach(function (mk) {
+    var parts = mk.split("-");
+    var monthLabel = MOIS_LONG[+parts[1] - 1] + " " + parts[0];
+    var data = months[mk];
+    html += '<div style="font-size:15px;font-weight:800;color:var(--noir);text-transform:uppercase;margin:20px 2px 10px;border-bottom:2px solid var(--rouge);padding-bottom:4px">' + monthLabel + '</div>';
+
+    if (data.seance.length) {
+      html += bilanSectionTitle("🎯 Ma séance");
+      data.seance.forEach(function (s) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(s.date) + '</div>';
+        if (s.obj) html += '<div style="font-size:13px;color:#334036"><b>' + esc(s.obj.theme || "Objectifs") + '</b> — off ' + resultBadge(s.obj.resultatOffensif) + ' · def ' + resultBadge(s.obj.resultatDefensif) + '</div>';
+        if (s.avant) html += '<div style="font-size:12px;color:#334036;margin-top:2px">Avant : forme ' + s.avant.forme + '/10, sommeil ' + s.avant.sommeil + '/10, motivation ' + s.avant.motivation + '/10</div>';
+        if (s.apres) html += '<div style="font-size:12px;color:#334036">Après : charge ' + s.apres.charge + '/10, plaisir ' + s.apres.plaisir + '/10' + (s.apres.appreciation ? " — " + esc(s.apres.appreciation) : "") + '</div>';
+        html += '</div>';
+      });
+    }
+    if (data.semaine.length) {
+      html += bilanSectionTitle("🗓️ Ma semaine");
+      data.semaine.forEach(function (s) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">Semaine du ' + fmtShort(s.weekStart) + '</div>' +
+          '<div style="font-size:13px;color:#334036">Performance : joueur ' + (s.perfJoueur || "—") + ", coach " + (s.perfCoach || "—") + ' · Investissement : joueur ' + (s.investJoueur || "—") + ", coach " + (s.investCoach || "—") + '</div></div>';
+      });
+    }
+    if (data.hooperVendredi.length) {
+      html += bilanSectionTitle("📅 Hooper (vendredi)");
+      data.hooperVendredi.forEach(function (e) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(e.date) + '</div>' +
+          '<div style="font-size:13px;color:#334036">Sommeil ' + e.sommeil + '/10 · Forme mentale ' + e.formeMentale + '/10 · Forme physique ' + e.formePhysique + '/10 · Confiance ' + e.confiance + '/10</div>' +
+          (e.pointsForts ? '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Point fort :</b> ' + esc(e.pointsForts) + '</div>' : "") +
+          (e.pointsAmeliorer ? '<div style="font-size:12px;color:#334036"><b>Point faible :</b> ' + esc(e.pointsAmeliorer) + '</div>' : "") + '</div>';
+      });
+    }
+    if (data.hooperSamedi.length) {
+      html += bilanSectionTitle("🛏️ Hooper (samedi)");
+      data.hooperSamedi.forEach(function (e) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(e.date) + '</div>' +
+          '<div style="font-size:13px;color:#334036">A joué avec son club : ' + esc(e.aJoueClub || "—") + (e.dureeJeuClub ? " (" + esc(e.dureeJeuClub) + (e.posteJoueClub ? ", " + esc(e.posteJoueClub) : "") + ")" : "") + '</div>' +
+          '<div style="font-size:12px;color:#334036;margin-top:2px">Bien joué ' + e.bienJoue + '/5 · Forme physique ' + e.formePhysiqueWE + '/5 · Heureux du match ' + e.heureuxMatch + '/5 · Prêt lundi ' + e.pretLundi + '/5</div>' +
+          (e.resumeMatchCoach ? '<div style="font-size:12px;color:#334036;margin-top:4px;font-style:italic">Éducateur : ' + esc(e.resumeMatchCoach) + '</div>' : "") + '</div>';
+      });
+    }
+    if (data.matchs.length) {
+      html += bilanSectionTitle("📋 Match section");
+      data.matchs.forEach(function (item) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(item.match.date) + " · vs " + esc(item.match.adversaire || "?") + (item.match.scoreFinal ? " (" + esc(item.match.scoreFinal) + ")" : "") + '</div>' +
+          (item.bilan.commentMatch ? '<div style="font-size:13px;color:#334036">' + esc(item.bilan.commentMatch) + '</div>' : "") +
+          (item.bilan.noteJoueur != null ? '<div style="font-size:12px;color:var(--gris);margin-top:2px">Note : ' + item.bilan.noteJoueur + '/10</div>' : "") +
+          (item.bilan.commentaireProf ? '<div style="font-size:12px;color:#334036;margin-top:4px;font-style:italic">Coach : ' + esc(item.bilan.commentaireProf) + (item.bilan.noteProf != null ? " (" + item.bilan.noteProf + "/10)" : "") + '</div>' : "") + '</div>';
+      });
+    }
+    if (data.medical.length) {
+      html += bilanSectionTitle("📏 Médical");
+      data.medical.forEach(function (e) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(e.date) + '</div>' +
+          '<div style="font-size:13px;color:#334036">Taille ' + esc(e.taille || "—") + ' cm · Poids ' + esc(e.poids || "—") + ' kg · IMC ' + esc(e.imc || "—") + '</div></div>';
+      });
+    }
+    if (data.tests.length) {
+      html += bilanSectionTitle("⏱️ Tests");
+      data.tests.forEach(function (e) {
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(e.date) + '</div>' +
+          '<div style="font-size:13px;color:#334036;font-weight:700">Total : ' + e.total + '/' + (TEST_DEFS.length * 20) + '</div></div>';
+      });
+    }
+  });
+
+  html += '</div>';
+  return html;
+}
+function bilanSectionTitle(label) {
+  return '<div style="font-size:12px;font-weight:700;color:var(--rouge);text-transform:uppercase;margin:12px 2px 6px">' + label + '</div>';
 }
 
 /* ============ PLANNING ============ */
@@ -2812,6 +2937,7 @@ function render() {
     case "adminManquants": body = screenAdminManquants(); break;
     case "adminDayDetail": body = screenAdminDayDetail(); break;
     case "adminImport": body = screenAdminImport(); break;
+    case "bilanAnnuel": body = screenBilanAnnuel(); break;
     default: body = screenWelcome();
   }
   var banner = "";
