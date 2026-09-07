@@ -447,8 +447,9 @@ function computeEcheances(pdata) {
     var filledCount = 0;
     for (var i = 0; i < trainingDaysPassed; i++) {
       var d = addDaysIso(monday, i);
-      var hasAvant = pdata.objectifs.some(function (e) { return e.date === d; });
-      var hasApres = pdata.ressenti.some(function (e) { return e.date === d && e.moment === "apres"; });
+      var entry = pdata.objectifs.find(function (e) { return e.date === d; });
+      var hasAvant = entry && (entry.theme || entry.objOffensif || entry.objDefensif);
+      var hasApres = entry && entry.plaisir != null;
       if (hasAvant && hasApres) filledCount++;
     }
     var color = filledCount === trainingDaysPassed ? "vert" : (filledCount >= trainingDaysPassed - 1 ? "orange" : "rouge");
@@ -916,10 +917,7 @@ function buildBilanAnnuel(pdata) {
     if (!months[key]) months[key] = { seance: [], semaine: [], hooperVendredi: [], hooperSamedi: [], matchs: [], medical: [], tests: [] };
     return months[key];
   }
-  var seanceByDate = {};
-  (pdata.objectifs || []).forEach(function (o) { seanceByDate[o.date] = seanceByDate[o.date] || { date: o.date }; seanceByDate[o.date].obj = o; });
-  (pdata.ressenti || []).forEach(function (r) { seanceByDate[r.date] = seanceByDate[r.date] || { date: r.date }; seanceByDate[r.date][r.moment] = r; });
-  Object.keys(seanceByDate).sort().forEach(function (date) { ensureMonth(date.slice(0, 7)).seance.push(seanceByDate[date]); });
+  (pdata.objectifs || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (o) { ensureMonth(o.date.slice(0, 7)).seance.push(o); });
 
   (pdata.semaines || []).filter(function (s) { return s.perfJoueur != null || s.perfCoach != null || s.investJoueur != null || s.investCoach != null; })
     .sort(function (a, b) { return a.weekStart < b.weekStart ? -1 : 1; })
@@ -968,10 +966,10 @@ function screenBilanAnnuel() {
     if (data.seance.length) {
       html += bilanSectionTitle("🎯 Ma séance");
       data.seance.forEach(function (s) {
-        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(s.date) + '</div>';
-        if (s.obj) html += '<div style="font-size:13px;color:#334036"><b>' + esc(s.obj.theme || "Objectifs") + '</b> — off ' + resultBadge(s.obj.resultatOffensif) + ' · def ' + resultBadge(s.obj.resultatDefensif) + '</div>';
-        if (s.avant) html += '<div style="font-size:12px;color:#334036;margin-top:2px">Avant : forme ' + fmtNote(s.avant.forme, 10) + ', sommeil ' + fmtNote(s.avant.sommeil, 10) + ', motivation ' + fmtNote(s.avant.motivation, 10) + '</div>';
-        if (s.apres) html += '<div style="font-size:12px;color:#334036">Après : charge ' + fmtNote(s.apres.charge, 10) + ', plaisir ' + fmtNote(s.apres.plaisir, 10) + (s.apres.appreciation ? " — " + esc(s.apres.appreciation) : "") + '</div>';
+        html += '<div class="card"><div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:4px">' + fmtShort(s.date) + '</div>' +
+          '<div style="font-size:13px;color:#334036"><b>' + esc(s.theme || "Objectifs") + '</b> — off ' + resultBadge(s.resultatOffensif) + ' · def ' + resultBadge(s.resultatDefensif) + '</div>' +
+          '<div style="font-size:12px;color:#334036;margin-top:2px">Avant : forme ' + fmtNote(s.formePhysique, 10) + ', motivation ' + fmtNote(s.motivation, 10) + '</div>' +
+          '<div style="font-size:12px;color:#334036">Après : plaisir ' + fmtNote(s.plaisir, 10) + ', performance ' + fmtNote(s.performance, 10) + ', charge perçue ' + fmtNote(s.chargePercue, 10) + ', fatigue ' + fmtNote(s.fatigue, 10) + '</div>';
         html += '</div>';
       });
     }
@@ -1368,55 +1366,40 @@ function resultBadge(v) {
 function tabSeance(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
   if (!App.seanceDate) {
-    var lo = latestOf(pdata.objectifs), lr = latestOf(pdata.ressenti);
-    var dates = [lo && lo.date, lr && lr.date].filter(Boolean).sort();
-    App.seanceDate = dates.length ? dates[dates.length - 1] : nearestTrainingDay(todayIso());
+    var lo = latestOf(pdata.objectifs);
+    App.seanceDate = lo ? lo.date : nearestTrainingDay(todayIso());
   }
   var seanceFilled = new Set();
   pdata.objectifs.forEach(function (e) { seanceFilled.add(e.date); });
-  pdata.ressenti.forEach(function (e) { seanceFilled.add(e.date); });
   var html = miniCalendar("seance", App.seanceDate, seanceFilled, "setSeanceDate", [1, 2, 3, 4]);
 
-  html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Fixation d\'objectifs</div>';
   var obj = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
   if (!draft._objInit || draft._objDate !== App.seanceDate) {
-    mergeIntoDraft(obj || { theme: "", objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", conseils: "", plaisir: null, performance: null, fatigue: null });
+    mergeIntoDraft(obj || { theme: "", formePhysique: null, motivation: null, objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", plaisir: null, performance: null, chargePercue: null, fatigue: null });
     draft._objInit = true; draft._objDate = App.seanceDate;
   }
   var f = draft;
-  html += '<div class="card">';
-  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — réservé au joueur.</div>';
-  if (obj && canEdit) html += '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin-bottom:8px">Objectif déjà enregistré pour cette date — modifiable ci-dessous</div>';
-  html += fieldInputDisabled("theme", "Thème de la séance", f.theme, "Ex : Jeu de transition", !canEdit) +
-    '<div class="field"><label>Objectif offensif individuel</label>' + voiceTextareaDisabled("objOffensif", f.objOffensif, "", !canEdit) + '</div>' +
-    resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
-    '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
-    resultPicker("resultatDefensif", f.resultatDefensif, !canEdit) + '<div style="height:12px"></div>' +
-    scaleRow("plaisir", "Plaisir", f.plaisir, !canEdit) + scaleRow("performance", "Performance", f.performance, !canEdit) + scaleRow("fatigue", "Fatigue", f.fatigue, !canEdit);
-  if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveObjectif()">' + (obj ? "Mettre à jour" : "Enregistrer") + '</button>';
-  html += '</div>';
+  if (!App.seanceMoment) App.seanceMoment = "avant";
 
-  html += '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:20px 2px 10px">Ressenti avant / après séance</div>';
-  if (!App.ressentiMoment) App.ressentiMoment = "avant";
-  var ress = pdata.ressenti.find(function (r) { return r.date === App.seanceDate && r.moment === App.ressentiMoment; });
-  if (!draft._ressInit || draft._ressDate !== App.seanceDate || draft._ressMoment !== App.ressentiMoment) {
-    var ressInit = ress ? Object.assign({}, ress, { plaisirRess: ress.plaisir != null ? ress.plaisir : null }) : { forme: null, sommeil: null, motivation: null, charge: null, plaisirRess: null, appreciation: "" };
-    mergeIntoDraft(ressInit);
-    draft._ressInit = true; draft._ressDate = App.seanceDate; draft._ressMoment = App.ressentiMoment;
-  }
-  var rf = draft;
   html += '<div class="card">';
   if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — réservé au joueur.</div>';
+  if (obj && canEdit) html += '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin-bottom:8px">Séance déjà enregistrée pour cette date — modifiable ci-dessous</div>';
   html += '<div class="row" style="margin-bottom:14px">' +
-    '<button class="pill ' + (App.ressentiMoment === "avant" ? "active" : "") + '" style="flex:1" onclick="setRessentiMoment(\'avant\')">Avant séance</button>' +
-    '<button class="pill ' + (App.ressentiMoment === "apres" ? "active" : "") + '" style="flex:1" onclick="setRessentiMoment(\'apres\')">Après séance</button></div>';
-  if (App.ressentiMoment === "avant") {
-    html += scaleRow("forme", "Forme physique", rf.forme, !canEdit) + scaleRow("sommeil", "Sommeil", rf.sommeil, !canEdit) + scaleRow("motivation", "Motivation", rf.motivation, !canEdit);
+    '<button class="pill ' + (App.seanceMoment === "avant" ? "active" : "") + '" style="flex:1" onclick="setSeanceMoment(\'avant\')">Avant séance</button>' +
+    '<button class="pill ' + (App.seanceMoment === "apres" ? "active" : "") + '" style="flex:1" onclick="setSeanceMoment(\'apres\')">Après séance</button></div>';
+
+  if (App.seanceMoment === "avant") {
+    html += fieldInputDisabled("theme", "Thème de la séance", f.theme, "Ex : Jeu de transition", !canEdit) +
+      scaleRow("formePhysique", "Forme physique", f.formePhysique, !canEdit) + scaleRow("motivation", "Motivation", f.motivation, !canEdit) +
+      '<div class="field"><label>Objectif offensif individuel</label>' + voiceTextareaDisabled("objOffensif", f.objOffensif, "", !canEdit) + '</div>' +
+      resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
+      '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
+      resultPicker("resultatDefensif", f.resultatDefensif, !canEdit);
   } else {
-    html += scaleRow("charge", "Charge perçue", rf.charge, !canEdit) + scaleRow("plaisirRess", "Plaisir", rf.plaisirRess, !canEdit) +
-      '<div class="field"><label>Appréciation sur la thématique / le travail réalisé</label>' + voiceTextareaDisabled("appreciation", rf.appreciation, "Ce que j\'ai retenu, réussi, à retravailler...", !canEdit) + '</div>';
+    html += scaleRow("plaisir", "Plaisir", f.plaisir, !canEdit) + scaleRow("performance", "Performance", f.performance, !canEdit) +
+      scaleRow("chargePercue", "Charge perçue", f.chargePercue, !canEdit) + scaleRow("fatigue", "Fatigue", f.fatigue, !canEdit);
   }
-  if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveRessenti()">' + (ress ? "Mettre à jour" : "Enregistrer") + '</button>';
+  if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveObjectif()">' + (obj ? "Mettre à jour" : "Enregistrer") + '</button>';
   html += '</div>';
   return html;
 }
@@ -1427,26 +1410,14 @@ function voiceTextareaDisabled(name, value, placeholder, disabled) {
   if (disabled) return '<textarea disabled>' + esc(value) + '</textarea>';
   return voiceTextarea(name, value, placeholder);
 }
-function setSeanceDate(d) { App.seanceDate = d; draft._objInit = false; draft._ressInit = false; render(); }
-function setRessentiMoment(m) { App.ressentiMoment = m; draft._ressInit = false; render(); }
+function setSeanceDate(d) { App.seanceDate = d; draft._objInit = false; render(); }
+function setSeanceMoment(m) { App.seanceMoment = m; render(); }
 function saveObjectif() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
   var existing = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
   var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.seanceDate }, cleanDraft());
   pdata.objectifs = existing ? pdata.objectifs.map(function (o) { return o.id === entry.id ? entry : o; }) : pdata.objectifs.concat([entry]);
-  savePlayerData(pid, pdata);
-  render();
-}
-function saveRessenti() {
-  var pid = App.activePlayerId;
-  var pdata = getPlayerData(pid);
-  var existing = pdata.ressenti.find(function (r) { return r.date === App.seanceDate && r.moment === App.ressentiMoment; });
-  var payload = App.ressentiMoment === "avant"
-    ? { forme: draft.forme, sommeil: draft.sommeil, motivation: draft.motivation }
-    : { charge: draft.charge, plaisir: draft.plaisirRess, appreciation: draft.appreciation };
-  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.seanceDate, moment: App.ressentiMoment }, payload);
-  pdata.ressenti = existing ? pdata.ressenti.map(function (r) { return r.id === entry.id ? entry : r; }) : pdata.ressenti.concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
@@ -2118,13 +2089,11 @@ function dayDetailContent(pdata, iso, wd) {
   var html = "";
   if (wd >= 1 && wd <= 4) {
     var obj = pdata.objectifs.find(function (e) { return e.date === iso; });
-    var ressAvant = pdata.ressenti.find(function (e) { return e.date === iso && e.moment === "avant"; });
-    var ressApres = pdata.ressenti.find(function (e) { return e.date === iso && e.moment === "apres"; });
-    if (!obj && !ressAvant && !ressApres) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Ma séance : pas rempli.</div>';
+    if (!obj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Ma séance : pas rempli.</div>';
     else {
-      if (obj) html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Objectifs</b> — ' + esc(obj.theme || "(sans thème)") + ' · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) + (obj.objOffensif ? '<br>Off : ' + esc(obj.objOffensif) : "") + (obj.objDefensif ? '<br>Def : ' + esc(obj.objDefensif) : "") + '</div>';
-      if (ressAvant) html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Avant séance</b> — forme ' + fmtNote(ressAvant.forme, 10) + ', sommeil ' + fmtNote(ressAvant.sommeil, 10) + ', motivation ' + fmtNote(ressAvant.motivation, 10) + '</div>';
-      if (ressApres) html += '<div style="font-size:12px;color:#334036"><b>Après séance</b> — charge ' + fmtNote(ressApres.charge, 10) + ', plaisir ' + fmtNote(ressApres.plaisir, 10) + (ressApres.appreciation ? '<br>' + esc(ressApres.appreciation) : "") + '</div>';
+      html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Avant</b> — ' + esc(obj.theme || "(sans thème)") + ' · forme ' + fmtNote(obj.formePhysique, 10) + ', motivation ' + fmtNote(obj.motivation, 10) + '</div>' +
+        '<div style="font-size:12px;color:#334036;margin-bottom:4px">Off ' + resultBadge(obj.resultatOffensif) + (obj.objOffensif ? ' : ' + esc(obj.objOffensif) : "") + ' · Def ' + resultBadge(obj.resultatDefensif) + (obj.objDefensif ? ' : ' + esc(obj.objDefensif) : "") + '</div>' +
+        '<div style="font-size:12px;color:#334036"><b>Après</b> — plaisir ' + fmtNote(obj.plaisir, 10) + ', performance ' + fmtNote(obj.performance, 10) + ', charge perçue ' + fmtNote(obj.chargePercue, 10) + ', fatigue ' + fmtNote(obj.fatigue, 10) + '</div>';
     }
   }
   if (wd === 4) {
@@ -2554,12 +2523,10 @@ function renderBulkDateEntry(pdata, playerId) {
   function pick(list) { return mode === "latest" ? latestOf(list) : list.find(function (e) { return e.date === date; }); }
   if (type === "seance") {
     var obj = pick(pdata.objectifs);
-    var ress = mode === "latest" ? latestOf(pdata.ressenti) : pdata.ressenti.filter(function (e) { return e.date === date; })[0];
-    if (!obj && !ress) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    var html = "";
-    if (obj) html += '<div style="font-size:12px;color:#334036;margin-bottom:6px"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>Objectif</b> — ' + esc(obj.theme || "(sans thème)") + ' · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) + '</div>';
-    if (ress) html += '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(ress.date) + '</span> — <b>' + (ress.moment === "avant" ? "Avant" : "Après") + '</b> ' + (ress.moment === "avant" ? ("forme " + ress.forme + "/10, sommeil " + ress.sommeil + "/10") : ("charge " + ress.charge + "/10, plaisir " + ress.plaisir + "/10" + (ress.appreciation ? " — " + esc(ress.appreciation) : ""))) + '</div>';
-    return html;
+    if (!obj) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>' + esc(obj.theme || "(sans thème)") + '</b> · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) +
+      '<div style="margin-top:2px">Avant : forme ' + fmtNote(obj.formePhysique, 10) + ', motivation ' + fmtNote(obj.motivation, 10) + '</div>' +
+      '<div>Après : plaisir ' + fmtNote(obj.plaisir, 10) + ', performance ' + fmtNote(obj.performance, 10) + ', charge ' + fmtNote(obj.chargePercue, 10) + ', fatigue ' + fmtNote(obj.fatigue, 10) + '</div></div>';
   }
   if (type === "hooperJeudi") {
     var e = pick(pdata.ficheVendredi);
@@ -2613,10 +2580,7 @@ function openManquants() {
 }
 var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Match club (samedi)"], ["semaine", "Ma semaine"]];
 function manquantsListFor(pdata, type) {
-  if (type === "seance") {
-    var a = pdata.objectifs || [], b = pdata.ressenti || [];
-    return a.concat(b);
-  }
+  if (type === "seance") return pdata.objectifs || [];
   if (type === "hooperJeudi") return pdata.ficheVendredi || [];
   if (type === "hooperWeekend") return pdata.hooperLundi || [];
   if (type === "semaine") return (pdata.semaines || []).map(function (s) { return { date: s.weekStart }; });
@@ -2626,7 +2590,7 @@ function manquantsSummary(pdata, entry, type) {
   if (!entry) return "";
   if (type === "hooperJeudi") return entry.pointsForts || entry.infosEntraineur || (entry.presenceVendredi ? "Présence : " + entry.presenceVendredi : "");
   if (type === "hooperWeekend") return entry.resumeMatchCoach || entry.commentaireDivers || (entry.score != null ? "Score Hooper : " + entry.score + "/20" : "");
-  if (type === "seance") return entry.theme || entry.appreciation || "";
+  if (type === "seance") return entry.theme || "";
   return "";
 }
 function screenAdminManquants() {
