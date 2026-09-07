@@ -332,6 +332,11 @@ function lastSaturday(iso) {
   var diff = (wd + 1) % 7; // jours depuis le samedi le plus recent (sam=0, dim=1, lun=2, ..., ven=6)
   return addDaysIso(iso, -diff);
 }
+function lastFriday(iso) {
+  var wd = weekdayOfIso(iso); // 0=dim,1=lun,...6=sam
+  var diff = (wd + 2) % 7; // jours depuis le vendredi le plus recent (ven=0, sam=1, dim=2, lun=3, ..., jeu=6)
+  return addDaysIso(iso, -diff);
+}
 function weekdayOfIso(iso) {
   var p = iso.split("-");
   return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay(); // 0=dim...6=sam
@@ -447,10 +452,10 @@ function computeEcheances(pdata) {
   var semColor = semaineFilled ? "vert" : (isoWd < 4 ? "jaune" : (isoWd === 4 ? "orange" : "rouge"));
   items.push({ label: "Ma semaine", color: semColor, detail: semaineFilled ? "Fait" : (isoWd < 4 ? "À faire d'ici jeudi soir" : (isoWd === 4 ? "À faire ce soir" : "En retard depuis jeudi")) });
 
-  var jeudi = addDaysIso(monday, 3);
-  var hjFilled = pdata.ficheVendredi.some(function (e) { return e.date === jeudi; });
-  var hjColor = hjFilled ? "vert" : (isoWd < 4 ? "jaune" : (isoWd === 4 ? "orange" : "rouge"));
-  items.push({ label: "Hooper (jeudi, pour ton club)", color: hjColor, detail: hjFilled ? "Fait" : (isoWd < 4 ? "À faire avant vendredi" : (isoWd === 4 ? "À faire aujourd'hui" : "En retard")) });
+  var vendredi = addDaysIso(monday, 4);
+  var hjFilled = pdata.ficheVendredi.some(function (e) { return e.date === vendredi; });
+  var hjColor = hjFilled ? "vert" : (isoWd < 5 ? "jaune" : (isoWd === 5 ? "orange" : "rouge"));
+  items.push({ label: "Hooper (vendredi, bilan de semaine)", color: hjColor, detail: hjFilled ? "Fait" : (isoWd < 5 ? "À faire vendredi" : (isoWd === 5 ? "À faire aujourd'hui" : "En retard depuis vendredi")) });
 
   var samedi = addDaysIso(monday, 5);
   var hwFilled = pdata.hooperLundi.some(function (e) { return e.date === samedi; });
@@ -1390,18 +1395,18 @@ function ouiNonPicker(name, label, value, disabled) {
 }
 function tabHooperJeudi(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
-  if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : todayIso(); }
+  if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : lastFriday(todayIso()); }
   var current = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
   if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
     resetDraft(current || { sommeil: 5, formeMentale: 5, formePhysique: 5, confiance: 5, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
     draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
   }
   var f = draft;
-  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Fiche hebdomadaire à partager avec ton entraîneur de club avant la séance du vendredi.</div>';
+  var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Bilan de ta semaine — à remplir le vendredi, à partager avec ton entraîneur de club avant la séance du soir.</div>';
   if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
   var hjFilled = new Set();
   pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
-  html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate") +
+  html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate", 5) +
     (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
   html += '<div class="card">';
   if (canEdit) {
@@ -1877,8 +1882,7 @@ function dayHasAnyData(iso, activityData) {
       if (pdata.semaines.some(function (s) { return s.weekStart === mon && (s.perfJoueur != null || s.investJoueur != null); })) return true;
     }
     if (wd === 5) {
-      var jeudi = addDaysIso(iso, -1);
-      if (pdata.ficheVendredi.some(function (e) { return e.date === jeudi; })) return true;
+      if (pdata.ficheVendredi.some(function (e) { return e.date === iso; })) return true;
     }
     if (wd === 6) {
       if (pdata.hooperLundi.some(function (e) { return e.date === iso; })) return true;
@@ -1988,9 +1992,8 @@ function dayDetailContent(pdata, iso, wd) {
     html += '</div>';
   }
   if (wd === 5) {
-    var jeudi = addDaysIso(iso, -1);
-    var hj = pdata.ficheVendredi.find(function (e) { return e.date === jeudi; });
-    if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (jeudi soir) : pas rempli.</div>';
+    var hj = pdata.ficheVendredi.find(function (e) { return e.date === iso; });
+    if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (vendredi, bilan de semaine) : pas rempli.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036">Sommeil ' + hj.sommeil + '/10 · Forme mentale ' + hj.formeMentale + '/10 · Forme physique ' + hj.formePhysique + '/10 · Confiance ' + hj.confiance + '/10</div>';
       if (hj.pointsForts) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Point fort :</b> ' + esc(hj.pointsForts) + '</div>';
@@ -2374,7 +2377,7 @@ function openBulkDate(type) {
   App.bulk.mode = "latest";
   nav("adminBulkDate");
 }
-var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (w-e)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
+var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Hooper (w-e)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
 function screenAdminBulkDate() {
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   var html = '<div class="header"><div class="title">Vue en direct — tous les joueurs</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
@@ -2462,7 +2465,7 @@ function openManquants() {
   if (!App.manquantsDate) App.manquantsDate = todayIso();
   nav("adminManquants");
 }
-var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (jeudi)"], ["hooperWeekend", "Hooper (samedi)"], ["semaine", "Ma semaine"]];
+var MANQUANTS_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Hooper (samedi)"], ["semaine", "Ma semaine"]];
 function manquantsListFor(pdata, type) {
   if (type === "seance") {
     var a = pdata.objectifs || [], b = pdata.ressenti || [];
@@ -2827,7 +2830,7 @@ var PH_TABS = [
   { key: "general", label: "Infos", icon: "ℹ️" },
   { key: "seance", label: "Ma séance", icon: "🎯" },
   { key: "semaine", label: "Ma semaine", icon: "🗓️" },
-  { key: "hooperJeudi", label: "Hooper (jeudi)", icon: "📅" },
+  { key: "hooperJeudi", label: "Hooper (vendredi)", icon: "📅" },
   { key: "hooperWeekend", label: "Hooper (samedi)", icon: "🛏️" },
   { key: "matchSection", label: "Match section", icon: "📋" },
   { key: "medical", label: "Médical", icon: "📏" },
