@@ -1406,26 +1406,23 @@ function tabSeance(player, pdata, isAdmin, role) {
     draft._objInit = true; draft._objDate = App.seanceDate;
   }
   var f = draft;
-  if (!App.seanceMoment) App.seanceMoment = "avant";
 
   html += '<div class="card">';
   if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — réservé au joueur.</div>';
   if (obj && canEdit) html += '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin-bottom:8px">Séance déjà enregistrée pour cette date — modifiable ci-dessous</div>';
-  html += '<div class="row" style="margin-bottom:14px">' +
-    '<button class="pill ' + (App.seanceMoment === "avant" ? "active" : "") + '" style="flex:1" onclick="setSeanceMoment(\'avant\')">Avant séance</button>' +
-    '<button class="pill ' + (App.seanceMoment === "apres" ? "active" : "") + '" style="flex:1" onclick="setSeanceMoment(\'apres\')">Après séance</button></div>';
 
-  if (App.seanceMoment === "avant") {
-    html += fieldInputDisabled("theme", "Thème de la séance", f.theme, "Ex : Jeu de transition", !canEdit) +
-      scaleRow("formePhysique", "Forme physique", f.formePhysique, !canEdit) + scaleRow("motivation", "Motivation", f.motivation, !canEdit) +
-      '<div class="field"><label>Objectif offensif individuel</label>' + voiceTextareaDisabled("objOffensif", f.objOffensif, "", !canEdit) + '</div>' +
-      resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
-      '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
-      resultPicker("resultatDefensif", f.resultatDefensif, !canEdit);
-  } else {
-    html += scaleRow("plaisir", "Plaisir", f.plaisir, !canEdit) + scaleRow("performance", "Performance", f.performance, !canEdit) +
-      scaleRow("chargePercue", "Charge perçue", f.chargePercue, !canEdit) + scaleRow("fatigue", "Fatigue", f.fatigue, !canEdit);
-  }
+  html += '<div style="font-weight:800;color:var(--rouge);font-size:13px;text-transform:uppercase;margin-bottom:10px">Avant la séance</div>' +
+    fieldInputDisabled("theme", "Thème de la séance", f.theme, "Ex : Jeu de transition", !canEdit) +
+    scaleRow("formePhysique", "Forme", f.formePhysique, !canEdit) + scaleRow("motivation", "Motivation", f.motivation, !canEdit) +
+    '<div class="field"><label>Objectif offensif individuel</label>' + voiceTextareaDisabled("objOffensif", f.objOffensif, "", !canEdit) + '</div>' +
+    resultPicker("resultatOffensif", f.resultatOffensif, !canEdit) + '<div style="height:12px"></div>' +
+    '<div class="field"><label>Objectif défensif individuel</label>' + voiceTextareaDisabled("objDefensif", f.objDefensif, "", !canEdit) + '</div>' +
+    resultPicker("resultatDefensif", f.resultatDefensif, !canEdit);
+
+  html += '<div style="font-weight:800;color:var(--rouge);font-size:13px;text-transform:uppercase;margin:22px 0 10px;padding-top:14px;border-top:1px solid #eee">Après la séance</div>' +
+    scaleRow("plaisir", "Plaisir", f.plaisir, !canEdit) + scaleRow("performance", "Performance", f.performance, !canEdit) +
+    scaleRow("chargePercue", "Charge perçue", f.chargePercue, !canEdit) + scaleRow("fatigue", "Fatigue", f.fatigue, !canEdit);
+
   if (canEdit) html += '<button class="btn btn-accent btn-block" onclick="saveObjectif()">' + (obj ? "Mettre à jour" : "Enregistrer") + '</button>';
   html += '</div>';
   return html;
