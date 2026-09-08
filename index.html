@@ -1395,9 +1395,14 @@ function tabSeance(player, pdata, isAdmin, role) {
   pdata.objectifs.forEach(function (e) { seanceFilled.add(e.date); });
   var html = miniCalendar("seance", App.seanceDate, seanceFilled, "setSeanceDate", [1, 2, 3, 4]);
 
-  var obj = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
+  var objMatches = pdata.objectifs.filter(function (o) { return o.date === App.seanceDate; });
+  var obj = objMatches.length ? objMatches[objMatches.length - 1] : null;
   if (!draft._objInit || draft._objDate !== App.seanceDate) {
-    mergeIntoDraft(obj || { theme: "", formePhysique: null, motivation: null, objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", plaisir: null, performance: null, chargePercue: null, fatigue: null });
+    var objInit = obj ? Object.assign({}, obj, {
+      formePhysique: obj.formePhysique != null ? obj.formePhysique : obj.forme,
+      chargePercue: obj.chargePercue != null ? obj.chargePercue : obj.charge,
+    }) : { theme: "", formePhysique: null, motivation: null, objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", plaisir: null, performance: null, chargePercue: null, fatigue: null };
+    mergeIntoDraft(objInit);
     draft._objInit = true; draft._objDate = App.seanceDate;
   }
   var f = draft;
@@ -1437,9 +1442,12 @@ function setSeanceMoment(m) { App.seanceMoment = m; render(); }
 function saveObjectif() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var existing = pdata.objectifs.find(function (o) { return o.date === App.seanceDate; });
+  var dupes = pdata.objectifs.filter(function (o) { return o.date === App.seanceDate; });
+  var existing = dupes.length ? dupes[dupes.length - 1] : null;
   var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.seanceDate }, cleanDraft());
-  pdata.objectifs = existing ? pdata.objectifs.map(function (o) { return o.id === entry.id ? entry : o; }) : pdata.objectifs.concat([entry]);
+  // On retire tout doublon eventuel pour cette date (issu d'un bug de synchronisation passe)
+  // et on ne garde que la version a jour.
+  pdata.objectifs = pdata.objectifs.filter(function (o) { return o.date !== App.seanceDate; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
@@ -1447,6 +1455,22 @@ function cleanDraft() {
   var d = Object.assign({}, draft);
   Object.keys(d).forEach(function (k) { if (k.charAt(0) === "_") delete d[k]; });
   return d;
+}
+// Retrouve tous les doublons correspondant a un critere (meme date, meme semaine...) et les
+// fusionne champ par champ (la derniere valeur non vide de chaque champ l'emporte), pour ne
+// jamais perdre une information (ex: la note du joueur ET celle du coach) meme si un bug de
+// synchronisation passe a cree plusieurs entrees separees pour la meme fiche.
+function mergeDuplicates(list, matchFn) {
+  var dupes = list.filter(matchFn);
+  if (!dupes.length) return null;
+  var merged = {};
+  dupes.forEach(function (d) {
+    Object.keys(d).forEach(function (k) {
+      if (d[k] != null && d[k] !== "") merged[k] = d[k];
+    });
+  });
+  merged.id = dupes[dupes.length - 1].id;
+  return merged;
 }
 
 /* ============ ONGLET MA SEMAINE ============ */
@@ -1467,7 +1491,7 @@ function tabSemaine(player, pdata, isAdmin, role) {
   var canEditJoueur = isAdmin || role === "joueur";
   var canEditCoach = isAdmin;
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.semaineWeekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
-  var current = pdata.semaines.find(function (e) { return e.weekStart === App.semaineWeekStart; });
+  var current = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === App.semaineWeekStart; });
   draft = current || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
 
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Case blanche : à remplir par le joueur le jeudi soir. Case grise : remplie par le responsable de la section. Reclique sur une note pour la décocher.</div>';
@@ -1504,10 +1528,10 @@ function saveSemaineGrade(field, value) {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.semaineWeekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
-  var existing = pdata.semaines.find(function (e) { return e.weekStart === App.semaineWeekStart; });
-  var entry = existing ? Object.assign({}, existing) : { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+  var merged = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === App.semaineWeekStart; });
+  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
   entry[field] = value;
-  pdata.semaines = existing ? pdata.semaines.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.semaines.concat([entry]);
+  pdata.semaines = pdata.semaines.filter(function (e) { return e.weekStart !== App.semaineWeekStart; }).concat([entry]);
   savePlayerData(pid, pdata);
 }
 
@@ -1531,7 +1555,7 @@ function ouiNonPicker(name, label, value, disabled) {
 function tabHooperJeudi(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
   if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : lastFriday(todayIso()); }
-  var current = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
+  var current = mergeDuplicates(pdata.ficheVendredi, function (e) { return e.date === App.hooperJeudiDate; });
   if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
     resetDraft(current || { sommeil: null, formeMentale: null, formePhysique: null, confiance: null, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
     draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
@@ -1581,9 +1605,9 @@ function setHooperJeudiDate(d) { App.hooperJeudiDate = d; draft._hjInit = false;
 function saveHooperJeudi() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var existing = pdata.ficheVendredi.find(function (e) { return e.date === App.hooperJeudiDate; });
-  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.hooperJeudiDate }, cleanDraft());
-  pdata.ficheVendredi = existing ? pdata.ficheVendredi.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.ficheVendredi.concat([entry]);
+  var merged = mergeDuplicates(pdata.ficheVendredi, function (e) { return e.date === App.hooperJeudiDate; });
+  var entry = Object.assign({ id: merged ? merged.id : uid(), date: App.hooperJeudiDate }, cleanDraft());
+  pdata.ficheVendredi = pdata.ficheVendredi.filter(function (e) { return e.date !== App.hooperJeudiDate; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
@@ -1604,7 +1628,7 @@ function tabMatchSection(player, pdata, isAdmin, role) {
   if (sorted.length === 0) return '<div class="empty">Aucun match de section pour l\'instant.</div>';
   if (!App.matchSelectedId) App.matchSelectedId = sorted[0].id;
   var match = sorted.find(function (m) { return m.id === App.matchSelectedId; }) || sorted[0];
-  var mine = pdata.bilans.find(function (b) { return b.matchId === match.id; });
+  var mine = mergeDuplicates(pdata.bilans, function (b) { return b.matchId === match.id; });
 
   var html = '<div class="card"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:8px">Choisis le match <span style="font-weight:400;color:var(--gris)">(vert = déjà rempli)</span></div><div class="pill-row">' +
     sorted.map(function (m) {
@@ -1683,19 +1707,19 @@ function selectMatchSection(id) { App.matchSelectedId = id; draft._msInit = fals
 function saveMatchPlayerPart() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var existing = pdata.bilans.find(function (b) { return b.matchId === App.matchSelectedId; });
-  var entry = Object.assign({ id: existing ? existing.id : uid(), matchId: App.matchSelectedId }, cleanDraft(), { commentaireProf: existing ? existing.commentaireProf : "", noteProf: existing ? existing.noteProf : null });
-  pdata.bilans = existing ? pdata.bilans.map(function (b) { return b.id === entry.id ? entry : b; }) : pdata.bilans.concat([entry]);
+  var merged = mergeDuplicates(pdata.bilans, function (b) { return b.matchId === App.matchSelectedId; });
+  var entry = Object.assign({ id: merged ? merged.id : uid(), matchId: App.matchSelectedId }, cleanDraft(), { commentaireProf: merged ? merged.commentaireProf : "", noteProf: merged ? merged.noteProf : null });
+  pdata.bilans = pdata.bilans.filter(function (b) { return b.matchId !== App.matchSelectedId; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
 function saveMatchProfPart() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var existing = pdata.bilans.find(function (b) { return b.matchId === App.matchSelectedId; });
-  var base = existing || { id: uid(), matchId: App.matchSelectedId, dispositif: "", compositionEquipe: "", consignesAvantMatch: "", scoreMiTemps: "", consignesMiTemps: "", objectifMatch: "", objectifResultat: "=", commentMatch: "", perspectives: "", noteJoueur: null };
+  var merged = mergeDuplicates(pdata.bilans, function (b) { return b.matchId === App.matchSelectedId; });
+  var base = merged || { id: uid(), matchId: App.matchSelectedId, dispositif: "", compositionEquipe: "", consignesAvantMatch: "", scoreMiTemps: "", consignesMiTemps: "", objectifMatch: "", objectifResultat: "=", commentMatch: "", perspectives: "", noteJoueur: null };
   var entry = Object.assign({}, base, { commentaireProf: draft.commentaireProf, noteProf: draft.noteProf });
-  pdata.bilans = existing ? pdata.bilans.map(function (b) { return b.id === entry.id ? entry : b; }) : pdata.bilans.concat([entry]);
+  pdata.bilans = pdata.bilans.filter(function (b) { return b.matchId !== App.matchSelectedId; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
@@ -1711,7 +1735,7 @@ function scale5(name, label, value, disabled) {
 }
 function tabHooperWeekend(player, pdata, isAdmin, role) {
   if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : lastSaturday(todayIso()); }
-  var current = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
+  var current = mergeDuplicates(pdata.hooperLundi, function (e) { return e.date === App.hooperWeekendDate; });
   var blank = { aJoueClub: "Oui", adversaireClub: "", scoreClub: "", dureeJeuClub: "", posteJoueClub: "", pointsForts: "", pointsFaibles: "", bienJoue: null, formePhysiqueWE: null, heureuxMatch: null, pretLundi: null, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
   if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
   var f = draft;
@@ -1770,11 +1794,11 @@ function setHooperWeekendDate(d) { App.hooperWeekendDate = d; draft._hwInit = fa
 function saveHooperWeekend() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var existing = pdata.hooperLundi.find(function (e) { return e.date === App.hooperWeekendDate; });
+  var merged = mergeDuplicates(pdata.hooperLundi, function (e) { return e.date === App.hooperWeekendDate; });
   var noteVals = [draft.bienJoue, draft.formePhysiqueWE, draft.heureuxMatch, draft.pretLundi];
   var score = noteVals.every(function (v) { return v != null; }) ? noteVals.reduce(function (a, b) { return a + b; }, 0) : null;
-  var entry = Object.assign({ id: existing ? existing.id : uid(), date: App.hooperWeekendDate }, cleanDraft(), { score: score });
-  pdata.hooperLundi = existing ? pdata.hooperLundi.map(function (e) { return e.id === entry.id ? entry : e; }) : pdata.hooperLundi.concat([entry]);
+  var entry = Object.assign({ id: merged ? merged.id : uid(), date: App.hooperWeekendDate }, cleanDraft(), { score: score });
+  pdata.hooperLundi = pdata.hooperLundi.filter(function (e) { return e.date !== App.hooperWeekendDate; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
 }
