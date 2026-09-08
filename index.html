@@ -154,6 +154,27 @@ var SYNC_URL = "https://script.google.com/macros/s/AKfycbwIIlMNk2F2cql8y18g0gwRu
 var syncQueue = JSON.parse(localStorage.getItem("sef-sync-queue") || "[]");
 function saveQueue() { localStorage.setItem("sef-sync-queue", JSON.stringify(syncQueue)); }
 
+// Apres un envoi reussi vers le serveur (Google Sheets), on protege cette cle pendant un
+// moment : Sheets peut mettre quelques secondes a "digerer" une ecriture avant de pouvoir
+// la relire correctement, et sans cette protection, une simple actualisation de page juste
+// apres une sauvegarde peut recuperer une version encore ancienne et ecraser ce qui vient
+// d'etre fait. On persiste cette info pour qu'elle survive a un rechargement de page.
+var PUSH_GRACE_MS = 120000;
+var recentlyPushed = JSON.parse(localStorage.getItem("sef-recently-pushed") || "{}");
+function markRecentlyPushed(key) {
+  recentlyPushed[key] = Date.now();
+  // Nettoyage : on ne garde que les entrees encore dans la fenetre de protection
+  var now = Date.now();
+  Object.keys(recentlyPushed).forEach(function (k) {
+    if (now - recentlyPushed[k] > PUSH_GRACE_MS) delete recentlyPushed[k];
+  });
+  localStorage.setItem("sef-recently-pushed", JSON.stringify(recentlyPushed));
+}
+function isInGracePeriod(key) {
+  var ts = recentlyPushed[key];
+  return !!ts && (Date.now() - ts) < PUSH_GRACE_MS;
+}
+
 var Storage = {
   get: function (key) {
     var raw = localStorage.getItem(key);
@@ -186,6 +207,7 @@ function flushQueue() {
   })
     .then(function (r) { return r.json(); })
     .then(function () {
+      markRecentlyPushed(item.key);
       syncQueue.shift();
       saveQueue();
       updateSyncBadge();
@@ -203,7 +225,7 @@ function pullFromRemote(key) {
     .then(function (data) {
       if (data && data.value !== undefined && data.value !== null) {
         var hasPending = syncQueue.some(function (q) { return q.key === key; });
-        if (!hasPending) {
+        if (!hasPending && !isInGracePeriod(key)) {
           localStorage.setItem(key, JSON.stringify(data.value));
           return data.value;
         }
@@ -224,7 +246,7 @@ function pullAllFromRemote() {
       var changed = false;
       var remoteKeys = Object.keys(data.all);
       remoteKeys.forEach(function (k) {
-        if (!pendingKeys[k]) {
+        if (!pendingKeys[k] && !isInGracePeriod(k)) {
           localStorage.setItem(k, JSON.stringify(data.all[k]));
           changed = true;
         }
