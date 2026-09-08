@@ -1397,12 +1397,17 @@ function tabSeance(player, pdata, isAdmin, role) {
 
   var objMatches = pdata.objectifs.filter(function (o) { return o.date === App.seanceDate; });
   var obj = objMatches.length ? objMatches[objMatches.length - 1] : null;
+  var blankSeance = { theme: "", formePhysique: null, motivation: null, objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", plaisir: null, performance: null, chargePercue: null, fatigue: null };
   if (!draft._objInit || draft._objDate !== App.seanceDate) {
-    var objInit = obj ? Object.assign({}, obj, {
+    // On repart TOUJOURS d'un gabarit vierge complet avant d'y superposer les donnees
+    // reellement enregistrees pour cette date : ca evite qu'un champ absent de l'ancienne
+    // fiche (a cause des evolutions du format au fil du temps) ne garde par erreur la valeur
+    // laissee par la date precedemment consultee.
+    var objInit = obj ? Object.assign({}, blankSeance, obj, {
       formePhysique: obj.formePhysique != null ? obj.formePhysique : obj.forme,
       chargePercue: obj.chargePercue != null ? obj.chargePercue : obj.charge,
-    }) : { theme: "", formePhysique: null, motivation: null, objOffensif: "", resultatOffensif: "=", objDefensif: "", resultatDefensif: "=", plaisir: null, performance: null, chargePercue: null, fatigue: null };
-    mergeIntoDraft(objInit);
+    }) : blankSeance;
+    resetDraft(objInit);
     draft._objInit = true; draft._objDate = App.seanceDate;
   }
   var f = draft;
