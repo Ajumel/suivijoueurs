@@ -2929,17 +2929,14 @@ function screenWelcome() {
       '<div class="app-sub">Collège Jean Moulin — Gacé</div>' +
     '</div>' +
     '<div style="padding:0 24px 30px">' +
-      '<div class="row" style="margin-bottom:18px">' +
-        '<button class="pill ' + (App.roleChoice === "joueur" ? "active" : "") + '" style="flex:1" onclick="setRoleChoice(\'joueur\')">Joueur</button>' +
-        '<button class="pill ' + (App.roleChoice === "entraineur" ? "active" : "") + '" style="flex:1" onclick="setRoleChoice(\'entraineur\')">Éducateur</button>' +
-      '</div>' +
-      '<div class="field"><label>Code d\'accès (joueur, ou code club pour un éducateur)</label>' +
-        '<input type="text" id="code-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:1px" placeholder="Ex : Arnold1234 ou Argentan5678" value="' + esc(App.code) + '" oninput="App.code=this.value">' +
+      '<div class="field"><label>Code d\'accès joueur</label>' +
+        '<input type="text" id="code-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:1px" placeholder="Ex : Arnold1234" value="' + esc(App.code) + '" oninput="App.code=this.value">' +
       '</div>' +
       (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
       '<button class="btn btn-accent btn-block" onclick="submitCode()">Accéder à la fiche</button>' +
       '<div class="center" style="margin:22px 0 6px;font-size:12px;color:#c3c8bd">— — —</div>' +
-      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:8px" onclick="nav(\'adminLogin\')">Accès staff</button>' +
+      '<div style="text-align:center;font-size:12px;color:var(--gris);margin-bottom:6px">Éducateur de club, encadrant, ou administrateur</div>' +
+      '<button class="btn btn-ghost btn-block" onclick="nav(\'adminLogin\')">Accès staff</button>' +
       '<div style="margin-top:24px"><img src="' + GROUP_PHOTO_B64 + '" style="width:100%;border-radius:12px;display:block" alt="Photo de groupe Sport-Études Football 2026-2027"><div style="text-align:center;font-size:11px;color:#8b9186;margin-top:6px">Section Sportive Football — Promo 2026-2027</div></div>' +
     '</div>';
 }
@@ -2956,13 +2953,13 @@ function submitCode() {
         info = Storage.get("sef-info-v1") || info;
       }
       if (!trySubmitCode(entered)) {
-        App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
+        App.error = "Code non reconnu. Si tu es éducateur ou encadrant, utilise \"Accès staff\" ci-dessous.";
         render();
       }
     });
     return;
   }
-  App.error = "Code non reconnu. Vérifie auprès d'Antoine.";
+  App.error = "Code non reconnu. Si tu es éducateur ou encadrant, utilise \"Accès staff\" ci-dessous.";
   render();
 }
 function trySubmitCode(entered) {
@@ -2974,8 +2971,25 @@ function trySubmitCode(entered) {
     nav("player");
     return true;
   }
+  return false;
+}
+
+function screenAdminLogin() {
+  return '<div class="logo-header"><img src="' + LOGO_B64 + '" style="width:64px;height:auto;display:inline-block" alt="Logo Section Excellence Sportive Gace"><div class="app-title">SUIVI SPORT-ÉTUDES</div></div>' +
+    '<div style="padding:0 24px 30px">' +
+      '<div class="field"><label>Code d\'accès staff (administrateur, club, ou encadrant)</label>' +
+        '<input type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(App.adminCodeInput) + '" oninput="App.adminCodeInput=this.value">' +
+      '</div>' +
+      (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
+      '<button class="btn btn-primary btn-block" onclick="submitAdminLogin()">Se connecter</button>' +
+      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:12px" onclick="nav(\'welcome\')">Retour</button>' +
+    '</div>';
+}
+function trySubmitStaffCode(entered) {
+  if (entered === info.adminCode) { App.error = ""; nav("adminHome"); return true; }
+  var upper = entered.toUpperCase();
   var clubs = clubsFromPlayers();
-  var club = clubs.find(function (c) { return c.code && c.code.toUpperCase() === entered; });
+  var club = clubs.find(function (c) { return c.code && c.code.toUpperCase() === upper; });
   if (club) {
     App.error = "";
     App.roleChoice = "entraineur";
@@ -2983,7 +2997,7 @@ function trySubmitCode(entered) {
     nav("clubHome");
     return true;
   }
-  var staff = (info.specialStaff || []).find(function (s) { return s.code && s.code.toUpperCase() === entered; });
+  var staff = (info.specialStaff || []).find(function (s) { return s.code && s.code.toUpperCase() === upper; });
   if (staff) {
     App.error = "";
     App.roleChoice = "entraineur";
@@ -2993,32 +3007,22 @@ function trySubmitCode(entered) {
   }
   return false;
 }
-
-function screenAdminLogin() {
-  return '<div class="logo-header"><img src="' + LOGO_B64 + '" style="width:64px;height:auto;display:inline-block" alt="Logo Section Excellence Sportive Gace"><div class="app-title">SUIVI SPORT-ÉTUDES</div></div>' +
-    '<div style="padding:0 24px 30px">' +
-      '<div class="field"><label>Code administrateur</label>' +
-        '<input type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(App.adminCodeInput) + '" oninput="App.adminCodeInput=this.value">' +
-      '</div>' +
-      (App.error ? '<div style="color:#B3412E;font-size:13px;margin-bottom:10px">' + esc(App.error) + '</div>' : '') +
-      '<button class="btn btn-primary btn-block" onclick="submitAdminLogin()">Se connecter</button>' +
-      '<button style="width:100%;text-align:center;background:none;border:none;color:#5b6b5f;font-size:13px;cursor:pointer;padding:12px" onclick="nav(\'welcome\')">Retour</button>' +
-    '</div>';
-}
 function submitAdminLogin() {
   var entered = (App.adminCodeInput || "").trim();
-  if (entered === info.adminCode) { App.error = ""; nav("adminHome"); return; }
+  if (trySubmitStaffCode(entered)) return;
   if (SYNC_URL && navigator.onLine) {
     App.error = "Vérification...";
     render();
     pullAllFromRemote().then(function (result) {
-      if (result.changed) { info = Storage.get("sef-info-v1") || info; }
-      if (entered === info.adminCode) { App.error = ""; nav("adminHome"); }
-      else { App.error = "Code administrateur incorrect."; render(); }
+      if (result.changed) {
+        info = Storage.get("sef-info-v1") || info;
+        players = Storage.get("sef-players-v1") || players;
+      }
+      if (!trySubmitStaffCode(entered)) { App.error = "Code non reconnu."; render(); }
     });
     return;
   }
-  App.error = "Code administrateur incorrect.";
+  App.error = "Code non reconnu.";
   render();
 }
 
