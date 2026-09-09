@@ -207,16 +207,23 @@ var Storage = {
     var raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   },
-  set: function (key, value) {
+  set: function (key, value, onResult) {
     localStorage.setItem(key, JSON.stringify(value));
+    if (onResult) {
+      pushCallbacks[key] = pushCallbacks[key] || [];
+      pushCallbacks[key].push(onResult);
+    }
     if (SYNC_URL) {
       syncQueue = syncQueue.filter(function (q) { return q.key !== key; });
       syncQueue.push({ key: key, value: value, ts: Date.now() });
       saveQueue();
       flushQueueSoon();
+    } else if (onResult) {
+      onResult(true);
     }
   },
 };
+var pushCallbacks = {};
 
 var flushTimer = null;
 function flushQueueSoon() {
@@ -238,6 +245,8 @@ function flushQueue() {
       syncQueue.shift();
       saveQueue();
       updateSyncBadge();
+      var cbs = pushCallbacks[item.key];
+      if (cbs) { delete pushCallbacks[item.key]; cbs.forEach(function (cb) { cb(true); }); }
       if (syncQueue.length > 0) flushQueueSoon();
     })
     .catch(function () {
@@ -304,6 +313,10 @@ function syncOnLoad() {
 
 window.addEventListener("online", function () { flushQueue(); syncOnLoad(); });
 window.addEventListener("offline", function () { render(); });
+// Filet de securite : si un envoi a echoue silencieusement (coupure reseau, erreur serveur
+// passagere...), on retente automatiquement toutes les 10 secondes tant qu'il reste des
+// elements en attente, au lieu de compter sur une autre sauvegarde pour relancer par hasard.
+setInterval(function () { if (SYNC_URL && navigator.onLine && syncQueue.length > 0) flushQueueSoon(); }, 10000);
 
 function periodicSync() {
   if (!SYNC_URL || !navigator.onLine) return;
@@ -781,7 +794,7 @@ function migratePlayers() {
 }
 
 function savePlayers() { Storage.set("sef-players-v1", players); }
-function saveInfo() { Storage.set("sef-info-v1", info); draft._dirty = false; }
+function saveInfo(onResult) { Storage.set("sef-info-v1", info, onResult); draft._dirty = false; }
 function saveMatches() { Storage.set("sef-matches-v1", matches); }
 function getPlayerData(id) { return Storage.get("sef-pdata-" + id) || emptyPlayerData(); }
 function savePlayerData(id, data) { Storage.set("sef-pdata-" + id, data); draft._dirty = false; }
@@ -1970,7 +1983,7 @@ function deleteBlessure(id) {
 
 /* ============ ONGLET TESTS + SEMESTRIELS ============ */
 function tabTests(player, pdata, isAdmin, role) {
-  var canEdit = isAdmin || role === "joueur";
+  var canEdit = isAdmin || role === "joueur" || role === "entraineur";
   var html = '<div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin:4px 2px 10px">Tests physiques et techniques</div>';
   if (canEdit) {
     if (!App.testShowAdd) html += '<button class="btn btn-accent btn-block" onclick="startTestAdd()">+ Nouvelle session de tests</button>';
@@ -2343,7 +2356,14 @@ function screenAdminHome() {
     html += fieldInput("newCode", "Nouveau code", draft.newCode, "Ex : 2627") +
       '<div class="row"><button class="btn btn-ghost" onclick="App.showChangeAdminCode=false; render()">Annuler</button><button class="btn btn-accent" onclick="saveAdminCode()">Enregistrer</button></div>';
   }
+  if (App.backupMsg) html += '<div style="font-size:13px;margin-top:10px;font-weight:700;color:' + (App.backupError ? "#B3412E" : "#2b6b1f") + '">' + esc(App.backupMsg) + '</div>';
   html += '</div>';
+
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:8px">Sauvegarde de sécurité</div>' +
+    '<div style="font-size:12px;color:var(--gris);margin-bottom:10px">Télécharge une copie de tes codes, encadrants et documents. En cas de souci, tu pourras tout restaurer en un clic, sans avoir à tout retaper.</div>' +
+    '<button class="btn btn-ghost btn-block" onclick="exportInfoBackup()" style="margin-bottom:8px">⬇️ Exporter mes données (codes, staff, documents)</button>' +
+    '<label class="btn btn-ghost btn-block" style="display:block;text-align:center;cursor:pointer">⬆️ Restaurer depuis une sauvegarde<input type="file" accept=".json" onchange="importInfoBackup(this)" style="display:none"></label>' +
+    '</div>';
 
   html += '</div>';
   return html;
@@ -2391,7 +2411,13 @@ function selectAllStaffPlayers() {
 function saveAdminCode() {
   if (!draft.newCode || !draft.newCode.trim()) return;
   info.adminCode = draft.newCode.trim();
-  saveInfo();
+  App.backupMsg = "⏳ Envoi vers le serveur en cours...";
+  App.backupError = false;
+  saveInfo(function (ok) {
+    App.backupMsg = ok ? "✅ Code bien reçu et confirmé par le serveur." : "❌ Échec de l'envoi — réessaie, ou vérifie ta connexion.";
+    App.backupError = !ok;
+    render();
+  });
   App.showChangeAdminCode = false;
   render();
 }
@@ -2399,9 +2425,69 @@ function saveSpecialStaff() {
   if (!draft.nom || !draft.nom.trim()) return;
   if (!info.specialStaff) info.specialStaff = [];
   info.specialStaff.push({ id: uid(), nom: draft.nom.trim(), code: generateCode(draft.nom.trim()), playerIds: draft.playerIds || [] });
-  saveInfo();
+  App.backupMsg = "⏳ Envoi vers le serveur en cours...";
+  App.backupError = false;
+  saveInfo(function (ok) {
+    App.backupMsg = ok ? "✅ Encadrant bien reçu et confirmé par le serveur." : "❌ Échec de l'envoi — réessaie, ou vérifie ta connexion.";
+    App.backupError = !ok;
+    render();
+  });
   App.showAddStaff = false;
   render();
+}
+function exportInfoBackup() {
+  var backup = {
+    exportedAt: new Date().toISOString(),
+    adminCode: info.adminCode,
+    clubCodes: info.clubCodes || {},
+    specialStaff: info.specialStaff || [],
+    documents: info.documents || [],
+    weeksPreparedFor: info.weeksPreparedFor || "",
+  };
+  var blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "sauvegarde-suivi-sport-etudes-" + todayIso() + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  App.backupMsg = "Sauvegarde téléchargée avec succès.";
+  App.backupError = false;
+  render();
+}
+function importInfoBackup(inputEl) {
+  var file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    try {
+      var backup = JSON.parse(reader.result);
+      if (!backup || typeof backup !== "object") throw new Error("format invalide");
+      if (backup.adminCode) info.adminCode = backup.adminCode;
+      if (backup.clubCodes) info.clubCodes = backup.clubCodes;
+      if (backup.specialStaff) info.specialStaff = backup.specialStaff;
+      if (backup.documents) info.documents = backup.documents;
+      if (backup.weeksPreparedFor) info.weeksPreparedFor = backup.weeksPreparedFor;
+      App.backupMsg = "⏳ Restauration en cours d'envoi...";
+      App.backupError = false;
+      render();
+      saveInfo(function (ok) {
+        App.backupMsg = ok
+          ? "✅ Sauvegarde restaurée et confirmée par le serveur" + (backup.exportedAt ? " (du " + fmtShort(backup.exportedAt.slice(0, 10)) + ")." : ".")
+          : "❌ Restauration locale faite, mais l'envoi au serveur a échoué — réessaie.";
+        App.backupError = !ok;
+        render();
+      });
+    } catch (e) {
+      App.backupMsg = "Ce fichier ne semble pas être une sauvegarde valide.";
+      App.backupError = true;
+      render();
+    }
+  };
+  reader.readAsText(file);
+  inputEl.value = "";
 }
 function setStaffCode(id, inputEl) {
   var s = info.specialStaff.find(function (x) { return x.id === id; });
@@ -3139,7 +3225,12 @@ function screenPlayerHome(isAdmin) {
     '<div class="tabbar">' + tabsHtml + '</div>';
 }
 function sortedPlayerIds() {
-  return players.slice().sort(byNomPrenom).map(function (p) { return p.id; });
+  var groupOrder = Array.from(new Set(players.map(function (p) { return p.groupe; })));
+  return players.slice().sort(function (a, b) {
+    var ga = groupOrder.indexOf(a.groupe), gb = groupOrder.indexOf(b.groupe);
+    if (ga !== gb) return ga - gb;
+    return byNomPrenom(a, b);
+  }).map(function (p) { return p.id; });
 }
 function switchToAdjacentPlayer(delta) {
   if (!confirmDiscardIfDirty()) return;
