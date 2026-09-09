@@ -367,6 +367,15 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 function todayIso() { var d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
 function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function fmtNote(v, max) { return v == null ? "—" : v + "/" + max; }
+// Colore une note en rouge quand elle merite ton attention, en vert sinon -- quel que soit
+// le sens du curseur (une fatigue elevee ET une motivation basse sont toutes les deux
+// affichees en rouge), pour pouvoir reperer les valeurs a surveiller d'un coup d'oeil sans
+// avoir a se rappeler, metrique par metrique, si c'est le chiffre haut ou bas qui alerte.
+function fmtNoteAlert(v, max, inverse) {
+  if (v == null) return '<span style="color:var(--gris)">—</span>';
+  var bad = inverse ? v >= max * 0.7 : v <= max * 0.4;
+  return '<span style="font-weight:800;color:' + (bad ? "#B3412E" : "#2b6b1f") + '">' + v + "/" + max + '</span>';
+}
 var MOIS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 var MOIS_LONG = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 var JOURS_LETTRE = ["L", "M", "M", "J", "V", "S", "D"];
@@ -2256,15 +2265,14 @@ function screenAdminHome() {
 
   html += adminCalendarHtml(activityData);
 
-  html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="openEducateurAvis()">🎤 Avis des éducateurs (tous les joueurs, dernier avis)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminTrombi\')">🪪 Trombinoscope (galerie photos)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openManquants()">🚦 Qui a rempli ? (code couleur)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminPlanning\')">📅 Voir / modifier le planning</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminInfos\')">📋 Infos, documents, projet & charte</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:16px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminTrombi\')">🪪 Trombinoscope (galerie photos)</button><div style="height:16px"></div>';
 
   html += '<input type="text" style="margin-bottom:14px" placeholder="Rechercher un joueur..." value="' + esc(App.search) + '" oninput="App.search=this.value; render()">';
   html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;color:var(--gris)">' +
@@ -2600,10 +2608,17 @@ function screenAdminBulkMatch() {
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   var recent = matches.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   var html = '<div class="header"><div class="title">Bilan de match</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
-    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'bulkmatch\')" ontouchend="swipeEnd(event)">';
 
   if (recent.length > 0) {
     html += '<div class="card"><div style="font-size:13px;font-weight:800;color:var(--noir);margin-bottom:10px">Historique des matchs de la section</div>';
+    if (App.bulk.matchId) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<button onclick="shiftBulkMatch(-1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">\u2039 Match préc.</button>' +
+        '<span style="font-size:11px;color:var(--gris)">glisser aussi possible</span>' +
+        '<button onclick="shiftBulkMatch(1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">Match suiv. \u203a</button>' +
+        '</div>';
+    }
     recent.forEach(function (m) {
       var nb = Object.values(App.bulk.data).filter(function (pd) { return pd.bilans.some(function (b) { return b.matchId === m.id && b.commentMatch; }); }).length;
       html += '<div onclick="selectBulkMatch(\'' + m.id + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #eee;cursor:pointer;background:' + (App.bulk.matchId === m.id ? "var(--or-clair)" : "transparent") + '">' +
@@ -2661,6 +2676,14 @@ function selectBulkMatch(id) {
   App.bulk.matchForm = { date: m.date, adversaire: m.adversaire, scoreFinal: m.scoreFinal };
   render();
 }
+function shiftBulkMatch(delta) {
+  var recent = matches.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  if (!recent.length) return;
+  var idx = recent.findIndex(function (m) { return m.id === App.bulk.matchId; });
+  if (idx === -1) idx = 0;
+  var newIdx = (idx + delta + recent.length) % recent.length;
+  selectBulkMatch(recent[newIdx].id);
+}
 function saveBulkMatch() {
   var f = App.bulk.matchForm;
   if (App.bulk.matchId) {
@@ -2701,7 +2724,7 @@ var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendre
 function screenAdminBulkDate() {
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   var html = '<div class="header"><div class="title">Vue en direct — tous les joueurs</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
-    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'bulkdate\')" ontouchend="swipeEnd(event)">';
   html += '<div class="card"><div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
     BULK_DATE_TYPES.map(function (t) { return '<button class="pill ' + (App.bulk.dateType === t[0] ? "active" : "") + '" style="flex:1 1 30%" onclick="setBulkDateType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>' +
     '<div class="row" style="margin-bottom:' + (App.bulk.mode === "date" ? "10px" : "0") + '">' +
@@ -2709,7 +2732,17 @@ function screenAdminBulkDate() {
       var label = m === "latest" ? "Dernières entrées" : "Par date précise";
       return '<button class="pill ' + (App.bulk.mode === m ? "active" : "") + '" onclick="setBulkMode(\'' + m + '\')">' + label + '</button>';
     }).join("") + '</div>';
-  if (App.bulk.mode === "date") html += '<div class="field"><label>Date</label><input type="date" value="' + App.bulk.date + '" onchange="App.bulk.date=this.value; render()"></div>';
+  if (App.bulk.mode === "date") {
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<button onclick="shiftBulkDate(-1)" style="border:none;background:#fff;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08)">\u2039</button>' +
+      '<input type="date" style="flex:1" value="' + App.bulk.date + '" onchange="App.bulk.date=this.value; render()">' +
+      '<button onclick="shiftBulkDate(1)" style="border:none;background:#fff;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08)">\u203a</button>' +
+      '</div><div style="font-size:11px;color:var(--gris)">glisser l\'écran aussi possible pour changer de jour</div>';
+  }
+  if (["seance", "hooperJeudi", "hooperWeekend"].indexOf(App.bulk.dateType) !== -1) {
+    html += '<div style="font-size:11px;color:var(--gris);margin-top:10px;padding-top:8px;border-top:1px solid #eee">' +
+      '<span style="color:#2b6b1f;font-weight:700">Vert</span> = pas d\'inquiétude particulière · <span style="color:#B3412E;font-weight:700">Rouge</span> = valeur à surveiller (forme/motivation/plaisir/performance bas, ou charge/fatigue élevée) — quel que soit le sens du chiffre.</div>';
+  }
   html += '</div>';
 
   groups.forEach(function (g) {
@@ -2723,27 +2756,45 @@ function screenAdminBulkDate() {
 }
 function setBulkDateType(t) { App.bulk.dateType = t; render(); }
 function setBulkMode(m) { App.bulk.mode = m; render(); }
+function shiftBulkDate(delta) {
+  if (App.bulk.mode !== "date") App.bulk.mode = "date";
+  App.bulk.date = addDaysIso(App.bulk.date, delta);
+  render();
+}
 function renderBulkDateEntry(pdata, playerId) {
   var type = App.bulk.dateType, mode = App.bulk.mode, date = App.bulk.date;
   function pick(list) { return mode === "latest" ? latestOf(list) : list.find(function (e) { return e.date === date; }); }
   if (type === "seance") {
     var obj = pick(pdata.objectifs);
     if (!obj) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>' + esc(obj.theme || "(sans thème)") + '</b> · off ' + resultBadge(obj.resultatOffensif) + ' · def ' + resultBadge(obj.resultatDefensif) +
-      '<div style="margin-top:2px">Avant : forme ' + fmtNote(obj.formePhysique, 10) + ', motivation ' + fmtNote(obj.motivation, 10) + '</div>' +
-      '<div>Après : plaisir ' + fmtNote(obj.plaisir, 10) + ', performance ' + fmtNote(obj.performance, 10) + ', charge ' + fmtNote(obj.chargePercue, 10) + ', fatigue ' + fmtNote(obj.fatigue, 10) + '</div></div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>' + esc(obj.theme || "(sans thème)") + '</b>' +
+      '<div style="margin-top:4px"><b>Objectif offensif</b> ' + resultBadge(obj.resultatOffensif) + (obj.objOffensif ? ' : ' + esc(obj.objOffensif) : ' — pas de détail écrit') + '</div>' +
+      '<div><b>Objectif défensif</b> ' + resultBadge(obj.resultatDefensif) + (obj.objDefensif ? ' : ' + esc(obj.objDefensif) : ' — pas de détail écrit') + '</div>' +
+      '<div style="margin-top:4px">Avant : forme ' + fmtNoteAlert(obj.formePhysique, 10, false) + ', motivation ' + fmtNoteAlert(obj.motivation, 10, false) + '</div>' +
+      '<div>Après : plaisir ' + fmtNoteAlert(obj.plaisir, 10, false) + ', performance ' + fmtNoteAlert(obj.performance, 10, false) + ', charge ' + fmtNoteAlert(obj.chargePercue, 10, true) + ', fatigue ' + fmtNoteAlert(obj.fatigue, 10, true) + '</div></div>';
   }
   if (type === "hooperJeudi") {
     var e = pick(pdata.ficheVendredi);
     if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Sommeil ' + fmtNote(e.sommeil, 10) + ' · Forme mentale ' + fmtNote(e.formeMentale, 10) + ' · Forme physique ' + fmtNote(e.formePhysique, 10) + ' · Confiance ' + fmtNote(e.confiance, 10) + '</div>' +
-      (e.pointsForts ? '<div><b>Point fort :</b> ' + esc(e.pointsForts) + '</div>' : "") +
-      '<div style="font-weight:700;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div></div>';
+    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span>' +
+      '<div style="margin-top:2px">Sommeil ' + fmtNoteAlert(e.sommeil, 10, false) + ' · Forme mentale ' + fmtNoteAlert(e.formeMentale, 10, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysique, 10, false) + ' · Confiance ' + fmtNoteAlert(e.confiance, 10, false) + '</div>' +
+      (e.principeOffensif ? '<div style="margin-top:2px"><b>Principe offensif :</b> ' + esc(e.principeOffensif) + '</div>' : "") +
+      (e.principeDefensif ? '<div><b>Principe défensif :</b> ' + esc(e.principeDefensif) + '</div>' : "") +
+      (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
+      (e.pointsAmeliorer ? '<div><b>À améliorer :</b> ' + esc(e.pointsAmeliorer) + '</div>' : "") +
+      (e.infosEntraineur ? '<div><b>Infos entraîneur :</b> ' + esc(e.infosEntraineur) + '</div>' : "") +
+      '<div style="font-weight:700;margin-top:2px;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div></div>';
   }
   if (type === "hooperWeekend") {
     var e = pick(pdata.hooperLundi);
     if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score : <b>' + (e.score != null ? e.score + "/20" : "pas complet") + '</b></div>';
+    var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score : <b>' + (e.score != null ? e.score + "/20" : "pas complet") + '</b></div>' +
+      '<div style="margin-top:2px">Bien joué ' + fmtNoteAlert(e.bienJoue, 5, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysiqueWE, 5, false) + ' · Heureux du match ' + fmtNoteAlert(e.heureuxMatch, 5, false) + ' · Prêt lundi ' + fmtNoteAlert(e.pretLundi, 5, false) + '</div>' +
+      (e.adversaireClub ? '<div style="margin-top:2px"><b>Contre :</b> ' + esc(e.adversaireClub) + (e.scoreClub ? ' (' + esc(e.scoreClub) + ')' : "") + '</div>' : "") +
+      (e.posteJoueClub ? '<div><b>Poste :</b> ' + esc(e.posteJoueClub) + '</div>' : "") +
+      (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
+      (e.pointsFaibles ? '<div><b>Points faibles :</b> ' + esc(e.pointsFaibles) + '</div>' : "") +
+      (e.infos ? '<div><b>Infos à partager :</b> ' + esc(e.infos) + '</div>' : "");
     if (e.resumeMatchCoach || e.commentaireDivers) {
       html += '<div style="margin-top:4px;background:var(--or-clair);border:1px solid var(--or-bord);border-radius:6px;padding:6px"><div style="font-size:10px;font-weight:700;color:var(--rouge)">ÉDUCATEUR</div>' +
         (e.resumeMatchCoach ? '<div><b>Résumé :</b> ' + esc(e.resumeMatchCoach) + '</div>' : "") + (e.commentaireDivers ? '<div><b>Commentaire :</b> ' + esc(e.commentaireDivers) + '</div>' : "") +
@@ -3257,6 +3308,8 @@ function swipeEnd(e) {
   if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
   if (ctx === "player") switchToAdjacentPlayer(dx < 0 ? 1 : -1);
   else if (ctx === "seance") switchSeanceDay(dx < 0 ? 1 : -1);
+  else if (ctx === "bulkdate") shiftBulkDate(dx < 0 ? 1 : -1);
+  else if (ctx === "bulkmatch") shiftBulkMatch(dx < 0 ? 1 : -1);
 }
 function switchSeanceDay(delta) {
   var next = addDaysIso(App.seanceDate, delta);
