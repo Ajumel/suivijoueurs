@@ -896,9 +896,23 @@ function draftSet(key, value) { draft[key] = value; draft._dirty = true; }
 function draftGet(key, fallback) { return draft.hasOwnProperty(key) ? draft[key] : fallback; }
 function resetDraft(obj) { draft = Object.assign({}, obj || {}); }
 function mergeIntoDraft(obj) { Object.keys(obj || {}).forEach(function (k) { draft[k] = obj[k]; }); }
-function confirmDiscardIfDirty() {
-  if (!draft._dirty) return true;
-  return confirm("Tu as des modifications non enregistrées sur cette fiche. Elles seront perdues si tu continues sans cliquer sur Enregistrer. Continuer quand même ?");
+// Au lieu de bloquer avec une question, on enregistre automatiquement et silencieusement ce
+// qui est en cours avant de changer de page, pour ne jamais perdre une saisie -- sans jamais
+// interrompre la navigation avec une question.
+function autoSaveIfDirty() {
+  if (!draft._dirty) return;
+  if ((App.screen !== "player" && App.screen !== "adminPlayer") || !App.activePlayerId) return;
+  switch (App.tab) {
+    case "seance": saveObjectif(); break;
+    case "hooperJeudi": saveHooperJeudi(); break;
+    case "hooperWeekend": saveHooperWeekend(); break;
+    case "medical":
+      if (App.mesShowAdd) saveMesure();
+      break;
+    case "tests":
+      if (App.testShowAdd) saveTestSession();
+      break;
+  }
 }
 
 /* ============ ONGLET IDENTITE ============ */
@@ -1444,7 +1458,7 @@ function scaleRow(name, label, value, disabled) {
   var html = '<div style="margin-bottom:12px"><div style="font-size:13px;color:#5b6b5f;margin-bottom:4px">' + esc(label) + '</div><div style="display:flex;gap:3px;flex-wrap:wrap">';
   for (var n = 1; n <= 10; n++) {
     var active = value === n;
-    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" style="width:27px;height:30px;border-radius:6px;font-size:11px;font-weight:700;border:' +
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + (active ? "null" : n) + '); render()" style="width:27px;height:30px;border-radius:6px;font-size:11px;font-weight:700;border:' +
       (active ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (active ? "var(--or-clair)" : "#fff") + ';color:' + (active ? "var(--noir)" : "#8b9186") + ';cursor:pointer">' + n + '</button>';
   }
   return html + '</div></div>';
@@ -1521,7 +1535,7 @@ function voiceTextareaDisabled(name, value, placeholder, disabled) {
   if (disabled) return '<textarea disabled>' + esc(value) + '</textarea>';
   return voiceTextarea(name, value, placeholder);
 }
-function setSeanceDate(d) { if (!confirmDiscardIfDirty()) return; App.seanceDate = d; draft._objInit = false; render(); }
+function setSeanceDate(d) { autoSaveIfDirty(); App.seanceDate = d; draft._objInit = false; render(); }
 function setSeanceMoment(m) { App.seanceMoment = m; render(); }
 function saveObjectif() {
   var pid = App.activePlayerId;
@@ -3104,9 +3118,9 @@ function runImportPlanning() {
     var evenement = (cols[3] || "").trim();
     var existing = info.programmation.find(function (e) { return e.date === date; });
     if (existing) {
-      if (heure) existing.heure = heure;
-      if (theme) existing.theme = theme;
-      if (evenement) existing.evenement = evenement;
+      existing.heure = heure;
+      existing.theme = theme;
+      existing.evenement = evenement;
       updated++;
     } else {
       info.programmation.push({ id: uid(), date: date, heure: heure, theme: theme, evenement: evenement });
@@ -3280,10 +3294,10 @@ function openPlayer(playerId, adminFlag, targetTab) {
   App.tab = targetTab || "identite";
   nav(adminFlag ? "adminPlayer" : "player");
 }
-function setPHTab(key) { if (!confirmDiscardIfDirty()) return; App.tab = key; resetDraft({}); render(); }
+function setPHTab(key) { autoSaveIfDirty(); App.tab = key; resetDraft({}); render(); }
 
 function exitPlayer() {
-  if (!confirmDiscardIfDirty()) return;
+  autoSaveIfDirty();
   App.activePlayerId = null;
   if (App.screen === "player") {
     if (App.activeClub) nav("clubHome"); else { App.code = ""; nav("welcome"); }
@@ -3345,7 +3359,7 @@ function sortedPlayerIds() {
   }).map(function (p) { return p.id; });
 }
 function switchToAdjacentPlayer(delta) {
-  if (!confirmDiscardIfDirty()) return;
+  autoSaveIfDirty();
   var ids = sortedPlayerIds();
   var idx = ids.indexOf(App.activePlayerId);
   if (idx === -1) return;
