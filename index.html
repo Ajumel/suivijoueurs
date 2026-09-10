@@ -1211,7 +1211,7 @@ function tabPlanning(isAdmin) {
   if (App.selectedPlanningDay) {
     var sd = calendarDays.find(function (d) { return d.date === App.selectedPlanningDay; });
     if (sd) {
-      html += '<div class="card" style="border:2px solid var(--noir)" ontouchstart="swipeStart(event,\'planning\')" ontouchend="swipeEnd(event)">' +
+      html += '<div class="card" style="border:2px solid var(--noir)">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
         '<button onclick="shiftPlanningDay(-1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:4px 10px">\u2039</button>' +
         '<div style="font-weight:800;color:var(--noir)">' + fmtShort(sd.date) + '</div>' +
@@ -1645,7 +1645,7 @@ function oneToTenSlider(name, label, value, disabled) {
   var html = '<div style="margin-bottom:12px"><div style="font-size:13px;color:#334036;margin-bottom:4px">' + esc(label) + '</div><div style="display:flex;gap:3px;flex-wrap:wrap">';
   for (var n = 1; n <= 10; n++) {
     var active = value === n;
-    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" style="width:27px;height:30px;border-radius:6px;font-size:11px;font-weight:700;border:' +
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + (active ? "null" : n) + '); render()" style="width:27px;height:30px;border-radius:6px;font-size:11px;font-weight:700;border:' +
       (active ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (active ? "var(--or-clair)" : "#fff") + ';color:' + (active ? "var(--noir)" : "#8b9186") + ';cursor:pointer">' + n + '</button>';
   }
   return html + '</div></div>';
@@ -1722,7 +1722,7 @@ function notePicker(name, value, disabled) {
   var html = '<div style="display:flex;gap:4px;flex-wrap:wrap">';
   for (var n = 0; n <= 10; n++) {
     var active = value === n;
-    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" style="width:30px;height:30px;border-radius:6px;font-size:12px;font-weight:700;border:' +
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + (active ? "null" : n) + '); render()" style="width:30px;height:30px;border-radius:6px;font-size:12px;font-weight:700;border:' +
       (active ? "2px solid var(--rouge)" : "1px solid #d7dcd3") + ';background:' + (active ? "var(--or-clair)" : "#fff") + ';color:' + (active ? "var(--noir)" : "#8b9186") + ';cursor:pointer">' + n + '</button>';
   }
   return html + '</div>';
@@ -1834,7 +1834,7 @@ function scale5(name, label, value, disabled) {
   var html = '<div style="margin-bottom:10px"><div style="font-size:13px;color:#334036;margin-bottom:4px">' + esc(label) + '</div><div style="display:flex;gap:6px">';
   [1,2,3,4,5].forEach(function (n) {
     var active = value === n;
-    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + n + '); render()" class="scale-btn ' + (active ? "active" : "") + '">' + n + '</button>';
+    html += '<button type="button" ' + (disabled ? "disabled" : "") + ' onclick="draftSet(\'' + name + '\', ' + (active ? "null" : n) + '); render()" class="scale-btn ' + (active ? "active" : "") + '">' + n + '</button>';
   });
   return html + '</div></div>';
 }
@@ -2578,11 +2578,11 @@ function deletePlayer(id) {
 
 function screenAdminPlanning() {
   return '<div class="header"><div class="title">Planning annuel</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
-    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' + tabPlanning(true) + '</div>';
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'planning\')" ontouchend="swipeEnd(event)">' + tabPlanning(true) + '</div>';
 }
 function screenPlanningScoped() {
   return '<div class="header"><div><div class="title">Planning annuel</div>' + (App.scopeTitle ? '<div class="sub">' + esc(App.scopeTitle) + '</div>' : '') + '</div><button class="btn-header" onclick="nav(\'' + App.scopeBackTarget + '\')">Retour</button></div>' +
-    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">' + tabPlanning(false) + '</div>';
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'planning\')" ontouchend="swipeEnd(event)">' + tabPlanning(false) + '</div>';
 }
 function screenAdminInfos() {
   return '<div class="header"><div class="title">Infos, documents, projet & charte</div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
