@@ -1632,12 +1632,25 @@ function setSemaineWeek(w) { App.semaineWeekStart = w; render(); }
 function saveSemaineGrade(field, value) {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
-  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.semaineWeekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
-  var merged = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === App.semaineWeekStart; });
-  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
+  var weekStart = mondayOf(App.hooperJeudiDate);
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === weekStart; }) || [weekStart, addDaysIso(weekStart, 6)];
+  var merged = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === weekStart; });
+  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
   entry[field] = value;
-  pdata.semaines = pdata.semaines.filter(function (e) { return e.weekStart !== App.semaineWeekStart; }).concat([entry]);
+  pdata.semaines = pdata.semaines.filter(function (e) { return e.weekStart !== weekStart; }).concat([entry]);
   savePlayerData(pid, pdata);
+}
+function saveSemaineComment() {
+  var pid = App.activePlayerId;
+  var pdata = getPlayerData(pid);
+  var weekStart = mondayOf(App.hooperJeudiDate);
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === weekStart; }) || [weekStart, addDaysIso(weekStart, 6)];
+  var merged = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === weekStart; });
+  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
+  entry.commentaire = draft.commentaire || "";
+  pdata.semaines = pdata.semaines.filter(function (e) { return e.weekStart !== weekStart; }).concat([entry]);
+  savePlayerData(pid, pdata);
+  render();
 }
 
 /* ============ ONGLET HOOPER JEUDI ============ */
@@ -1661,8 +1674,12 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
   if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : lastFriday(todayIso()); }
   var current = mergeDuplicates(pdata.ficheVendredi, function (e) { return e.date === App.hooperJeudiDate; });
+  var weekStart = mondayOf(App.hooperJeudiDate);
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === weekStart; }) || [weekStart, addDaysIso(weekStart, 6)];
+  var semaineEntry = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === weekStart; });
   if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
-    resetDraft(current || { sommeil: null, formeMentale: null, formePhysique: null, confiance: null, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
+    resetDraft(current || { sommeil: null, formeMentale: null, formePhysique: null, confiance: null, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui", remarqueStaff: "" });
+    mergeIntoDraft(semaineEntry || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" });
     draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
   }
   var f = draft;
@@ -1699,6 +1716,43 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
     ]);
   }
   html += '</div>';
+
+  var canEditJoueurGrade = isAdmin || role === "joueur";
+  var joueurDone = f.perfJoueur != null && f.investJoueur != null;
+  var perfLocked = !canEditJoueurGrade || f.perfCoach != null;
+  var investLocked = !canEditJoueurGrade || f.investCoach != null;
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin-bottom:4px">Évaluation de la semaine</div>' +
+    '<div style="font-size:11px;color:var(--gris);margin-bottom:10px">Semaine du ' + week[0] + ' au ' + week[1] + '</div>';
+  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div>' +
+    gradePicker("perfJoueur", f.perfJoueur, perfLocked) + (perfLocked && canEditJoueurGrade ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>';
+  html += '<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div>' +
+    gradePicker("investJoueur", f.investJoueur, investLocked) + (investLocked && canEditJoueurGrade ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>';
+
+  if (isAdmin || joueurDone) {
+    html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee">' +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">Note du responsable — performance</div>' + gradePicker("perfCoach", f.perfCoach, !isAdmin) +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:10px 0 6px">Note du responsable — investissement</div>' + gradePicker("investCoach", f.investCoach, !isAdmin) +
+      (isAdmin ? '<div class="field" style="margin-top:10px"><label>Commentaire</label>' + voiceTextarea("commentaire", f.commentaire, "") + '</div><button class="btn btn-ghost btn-block" onclick="saveSemaineComment()">Enregistrer le commentaire</button>' : (f.commentaire ? '<div style="margin-top:10px;font-size:13px;color:#334036;background:#f7f8f4;border-radius:8px;padding:8px">' + esc(f.commentaire) + '</div>' : '')) +
+      '</div>';
+  } else {
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--gris);font-style:italic">La note du responsable et son commentaire apparaîtront ici une fois que tu auras rempli ta propre note ci-dessus.</div>';
+  }
+  html += '</div>';
+
+  if (role !== "joueur") {
+    var canEditRemark = isAdmin || (role === "entraineur" && App.activeSpecialStaffId);
+    html += '<div class="card" style="border:1px solid var(--rouge)"><div style="font-weight:800;color:var(--rouge);font-size:12px;text-transform:uppercase;margin-bottom:8px">Remarque du staff</div>' +
+      '<div style="font-size:11px;color:var(--gris);margin-bottom:8px">Visible par l\'éducateur de club avant le match — ex : joueur blessé, très en forme, attitude à surveiller...</div>';
+    if (canEditRemark) {
+      html += '<div class="voice-wrap"><textarea placeholder="Ex : douleur au genou signalée mardi, à surveiller." oninput="draftSet(\'remarqueStaff\', this.value)">' + esc(f.remarqueStaff || "") + '</textarea></div>' +
+        '<button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="saveHooperRemarque()">Enregistrer la remarque</button>';
+    } else if (f.remarqueStaff) {
+      html += '<div style="font-size:13px;color:#334036;background:var(--or-clair);border-radius:8px;padding:8px">' + esc(f.remarqueStaff) + '</div>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune remarque pour le moment.</div>';
+    }
+    html += '</div>';
+  }
   return html;
 }
 function readOnlyRows(pairs) {
@@ -1711,7 +1765,10 @@ function saveHooperJeudi() {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
   var merged = mergeDuplicates(pdata.ficheVendredi, function (e) { return e.date === App.hooperJeudiDate; });
-  var entry = Object.assign({ id: merged ? merged.id : uid(), date: App.hooperJeudiDate }, cleanDraft());
+  var fields = ["sommeil", "formeMentale", "formePhysique", "confiance", "principeOffensif", "principeDefensif", "pointsForts", "pointsAmeliorer", "aJoueSection", "dureeJeuSection", "infosEntraineur", "presenceVendredi", "remarqueStaff"];
+  var payload = {};
+  fields.forEach(function (k) { payload[k] = draft[k]; });
+  var entry = Object.assign({ id: merged ? merged.id : uid(), date: App.hooperJeudiDate }, payload);
   pdata.ficheVendredi = pdata.ficheVendredi.filter(function (e) { return e.date !== App.hooperJeudiDate; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
@@ -2617,14 +2674,15 @@ function screenAdminBulkSemaine() {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
       var pdata = App.bulk.data[p.id];
-      var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null };
-      html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "semaine") + '</div>' +
+      var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
+      html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "hooperJeudi") + '</div>' +
         '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "perfJoueur", entry.perfJoueur) + '</div>' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "perfCoach", entry.perfCoach) + '</div></div></div>' +
-        '<div><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
+        '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "investJoueur", entry.investJoueur) + '</div>' +
-        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "investCoach", entry.investCoach) + '</div></div></div></div>';
+        '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "investCoach", entry.investCoach) + '</div></div></div>' +
+        '<div class="field"><label>Commentaire</label><div class="voice-wrap"><textarea oninput="setBulkSemaineComment(\'' + p.id + '\',this.value)">' + esc(entry.commentaire || "") + '</textarea></div></div></div>';
     });
   });
   html += '</div>';
@@ -2642,10 +2700,18 @@ function setBulkGrade(playerId, field, val, wasActive) {
   var pdata = App.bulk.data[playerId];
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
   var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; });
-  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null }; pdata.semaines.push(entry); }
+  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" }; pdata.semaines.push(entry); }
   entry[field] = wasActive ? null : val;
   savePlayerData(playerId, pdata);
   render();
+}
+function setBulkSemaineComment(playerId, value) {
+  var pdata = App.bulk.data[playerId];
+  var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
+  var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; });
+  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" }; pdata.semaines.push(entry); }
+  entry.commentaire = value;
+  savePlayerData(playerId, pdata);
 }
 
 /* ---- Vue groupée : Match ---- */
@@ -3389,7 +3455,6 @@ var PH_TABS = [
   { key: "planning", label: "Planning", icon: "📅" },
   { key: "general", label: "Infos", icon: "ℹ️" },
   { key: "seance", label: "Ma séance", icon: "🎯" },
-  { key: "semaine", label: "Ma semaine", icon: "🗓️" },
   { key: "hooperJeudi", label: "Hooper (vendredi)", icon: "📅" },
   { key: "hooperWeekend", label: "Match club (samedi)", icon: "⚽" },
   { key: "matchSection", label: "Match section", icon: "📋" },
