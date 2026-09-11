@@ -272,11 +272,11 @@ function pullFromRemote(key) {
 }
 
 function pullAllFromRemote() {
-  if (!SYNC_URL || !navigator.onLine) return Promise.resolve({ changed: false, remoteKeys: [] });
+  if (!SYNC_URL || !navigator.onLine) return Promise.resolve({ changed: false, remoteKeys: [], ok: false });
   return fetch(SYNC_URL)
     .then(function (r) { return r.json(); })
     .then(function (data) {
-      if (!data || !data.all) return { changed: false, remoteKeys: [] };
+      if (!data || !data.all) return { changed: false, remoteKeys: [], ok: true };
       var pendingKeys = {};
       syncQueue.forEach(function (q) { pendingKeys[q.key] = true; });
       var changed = false;
@@ -287,9 +287,9 @@ function pullAllFromRemote() {
           changed = true;
         }
       });
-      return { changed: changed, remoteKeys: remoteKeys };
+      return { changed: changed, remoteKeys: remoteKeys, ok: true };
     })
-    .catch(function () { return { changed: false, remoteKeys: [] }; });
+    .catch(function () { return { changed: false, remoteKeys: [], ok: false }; });
 }
 
 function syncOnLoad() {
@@ -299,14 +299,21 @@ function syncOnLoad() {
       info = Storage.get("sef-info-v1") || info;
       matches = Storage.get("sef-matches-v1") || matches;
     }
-    runMigrationsAndEnsure();
-    // Premier lancement absolu : si le serveur ne connaissait pas encore ces clés
-    // de base, on les envoie maintenant pour que les autres appareils les trouvent.
-    var known = {};
-    result.remoteKeys.forEach(function (k) { known[k] = true; });
-    if (!known["sef-players-v1"]) Storage.set("sef-players-v1", players);
-    if (!known["sef-info-v1"]) Storage.set("sef-info-v1", info);
-    if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
+    // Les migrations (migratePlayers, ensureClubCodes, ensureWeeks) peuvent pousser des
+    // donnees vers le serveur. On ne les lance QUE si la synchronisation avec le serveur a
+    // reellement reussi juste avant : sinon, "players"/"info" en memoire pourraient encore
+    // etre la version par defaut (si c'est le tout premier chargement sur cet appareil et
+    // que la requete a echoue), et une migration lancee sur cette base ecraserait les
+    // vraies donnees existantes sur le serveur (codes, staff, documents, planning,
+    // coordonnees des joueurs) avec des valeurs par defaut incompletes.
+    if (result.ok) {
+      runMigrationsAndEnsure();
+      var known = {};
+      result.remoteKeys.forEach(function (k) { known[k] = true; });
+      if (!known["sef-players-v1"]) Storage.set("sef-players-v1", players);
+      if (!known["sef-info-v1"]) Storage.set("sef-info-v1", info);
+      if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
+    }
     if (App.screen !== "welcome" && App.screen !== "adminLogin") render();
   });
 }
@@ -1684,6 +1691,29 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   }
   var f = draft;
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Bilan de ta semaine — à remplir le vendredi, à partager avec ton entraîneur de club avant la séance du soir.</div>';
+
+  // --- Évaluation de la semaine, tout en haut de la page ---
+  var canEditJoueurGrade = isAdmin || role === "joueur";
+  var joueurDone = f.perfJoueur != null && f.investJoueur != null;
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin-bottom:4px">Évaluation de la semaine</div>' +
+    '<div style="font-size:11px;color:var(--gris);margin-bottom:10px">Semaine du ' + week[0] + ' au ' + week[1] + '</div>';
+  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div>' +
+    gradePicker("perfJoueur", f.perfJoueur, !canEditJoueurGrade) + '</div>';
+  html += '<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div>' +
+    gradePicker("investJoueur", f.investJoueur, !canEditJoueurGrade) + '</div>';
+
+  if (isAdmin || joueurDone) {
+    html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee">' +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">Note du responsable — performance</div>' + gradePicker("perfCoach", f.perfCoach, !isAdmin) +
+      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:10px 0 6px">Note du responsable — investissement</div>' + gradePicker("investCoach", f.investCoach, !isAdmin) +
+      (isAdmin ? '<div class="field" style="margin-top:10px"><label>Commentaire</label>' + voiceTextarea("commentaire", f.commentaire, "") + '</div><button class="btn btn-ghost btn-block" onclick="saveSemaineComment()">Enregistrer le commentaire</button>' : (f.commentaire ? '<div style="margin-top:10px;font-size:13px;color:#334036;background:#f7f8f4;border-radius:8px;padding:8px">' + esc(f.commentaire) + '</div>' : '')) +
+      '</div>';
+  } else {
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--gris);font-style:italic">La note du responsable et son commentaire apparaîtront ici une fois que tu auras rempli ta propre note ci-dessus.</div>';
+  }
+  html += '</div>';
+
+  // --- Fiche du vendredi ---
   if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
   var hjFilled = new Set();
   pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
@@ -1714,28 +1744,6 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
       ["Point fort", f.pointsForts], ["Point faible", f.pointsAmeliorer],
       ["A joué un match avec la section", f.aJoueSection], ["Durée de jeu", f.dureeJeuSection], ["Présence vendredi", f.presenceVendredi],
     ]);
-  }
-  html += '</div>';
-
-  var canEditJoueurGrade = isAdmin || role === "joueur";
-  var joueurDone = f.perfJoueur != null && f.investJoueur != null;
-  var perfLocked = !canEditJoueurGrade || f.perfCoach != null;
-  var investLocked = !canEditJoueurGrade || f.investCoach != null;
-  html += '<div class="card"><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin-bottom:4px">Évaluation de la semaine</div>' +
-    '<div style="font-size:11px;color:var(--gris);margin-bottom:10px">Semaine du ' + week[0] + ' au ' + week[1] + '</div>';
-  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div>' +
-    gradePicker("perfJoueur", f.perfJoueur, perfLocked) + (perfLocked && canEditJoueurGrade ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>';
-  html += '<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div>' +
-    gradePicker("investJoueur", f.investJoueur, investLocked) + (investLocked && canEditJoueurGrade ? '<div style="font-size:10px;color:var(--gris);margin-top:3px">Verrouillé (note du responsable déjà donnée)</div>' : '') + '</div>';
-
-  if (isAdmin || joueurDone) {
-    html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee">' +
-      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">Note du responsable — performance</div>' + gradePicker("perfCoach", f.perfCoach, !isAdmin) +
-      '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:10px 0 6px">Note du responsable — investissement</div>' + gradePicker("investCoach", f.investCoach, !isAdmin) +
-      (isAdmin ? '<div class="field" style="margin-top:10px"><label>Commentaire</label>' + voiceTextarea("commentaire", f.commentaire, "") + '</div><button class="btn btn-ghost btn-block" onclick="saveSemaineComment()">Enregistrer le commentaire</button>' : (f.commentaire ? '<div style="margin-top:10px;font-size:13px;color:#334036;background:#f7f8f4;border-radius:8px;padding:8px">' + esc(f.commentaire) + '</div>' : '')) +
-      '</div>';
-  } else {
-    html += '<div style="margin-top:10px;font-size:12px;color:var(--gris);font-style:italic">La note du responsable et son commentaire apparaîtront ici une fois que tu auras rempli ta propre note ci-dessus.</div>';
   }
   html += '</div>';
 
@@ -2697,21 +2705,25 @@ function bulkGrade(playerId, field, value) {
   }).join("") + '</div>';
 }
 function setBulkGrade(playerId, field, val, wasActive) {
-  var pdata = App.bulk.data[playerId];
+  var pdata = getPlayerData(playerId);
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
-  var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; });
-  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" }; pdata.semaines.push(entry); }
+  var merged = mergeDuplicates(pdata.semaines, function (s) { return s.weekStart === App.bulk.weekStart; });
+  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
   entry[field] = wasActive ? null : val;
+  pdata.semaines = pdata.semaines.filter(function (s) { return s.weekStart !== App.bulk.weekStart; }).concat([entry]);
   savePlayerData(playerId, pdata);
+  App.bulk.data[playerId] = pdata;
   render();
 }
 function setBulkSemaineComment(playerId, value) {
-  var pdata = App.bulk.data[playerId];
+  var pdata = getPlayerData(playerId);
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === App.bulk.weekStart; }) || SCHOOL_WEEKS[currentSchoolWeekIndex()];
-  var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; });
-  if (!entry) { entry = { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" }; pdata.semaines.push(entry); }
+  var merged = mergeDuplicates(pdata.semaines, function (s) { return s.weekStart === App.bulk.weekStart; });
+  var entry = merged || { id: uid(), weekStart: week[0], weekEnd: week[1], perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
   entry.commentaire = value;
+  pdata.semaines = pdata.semaines.filter(function (s) { return s.weekStart !== App.bulk.weekStart; }).concat([entry]);
   savePlayerData(playerId, pdata);
+  App.bulk.data[playerId] = pdata;
 }
 
 /* ---- Vue groupée : Match ---- */
@@ -2821,11 +2833,13 @@ function deleteBulkMatch() {
   render();
 }
 function setBulkComment(playerId, field, value) {
-  var pdata = App.bulk.data[playerId];
-  var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; });
-  if (!entry) { entry = { id: uid(), matchId: App.bulk.matchId, commentMatch: "", noteJoueur: null, commentaireProf: "", noteProf: null }; pdata.bilans.push(entry); }
+  var pdata = getPlayerData(playerId);
+  var merged = mergeDuplicates(pdata.bilans, function (b) { return b.matchId === App.bulk.matchId; });
+  var entry = merged || { id: uid(), matchId: App.bulk.matchId, commentMatch: "", noteJoueur: null, commentaireProf: "", noteProf: null };
   entry[field] = value;
+  pdata.bilans = pdata.bilans.filter(function (b) { return b.matchId !== App.bulk.matchId; }).concat([entry]);
   savePlayerData(playerId, pdata);
+  App.bulk.data[playerId] = pdata;
   if (field === "noteProf") render();
 }
 
@@ -3004,9 +3018,10 @@ function renderBulkDateEntry(pdata, playerId) {
   return "";
 }
 function setBulkHooperReponse(playerId, entryId, value) {
-  var pdata = App.bulk.data[playerId];
-  pdata.hooperLundi = pdata.hooperLundi.map(function (e) { return e.id === entryId ? Object.assign({}, e, { reponseAdmin: value }) : e; });
-  savePlayerData(playerId, pdata);
+  var pdata = getPlayerData(playerId);
+  var found = false;
+  pdata.hooperLundi = pdata.hooperLundi.map(function (e) { if (e.id === entryId) { found = true; return Object.assign({}, e, { reponseAdmin: value }); } return e; });
+  if (found) { savePlayerData(playerId, pdata); App.bulk.data[playerId] = pdata; }
 }
 
 /* ---- Bilan de match de club (samedi) : commentaire de l'educateur, en masse ---- */
@@ -3023,7 +3038,7 @@ function shiftClubMatchDate(delta) {
   render();
 }
 function setBulkClubMatchField(playerId, date, field, value) {
-  var pdata = App.bulk.data[playerId];
+  var pdata = getPlayerData(playerId);
   var existing = pdata.hooperLundi.find(function (e) { return e.date === date; });
   if (existing) {
     existing[field] = value;
@@ -3033,6 +3048,7 @@ function setBulkClubMatchField(playerId, date, field, value) {
     pdata.hooperLundi.push(blank);
   }
   savePlayerData(playerId, pdata);
+  App.bulk.data[playerId] = pdata;
 }
 function screenBulkClubMatch() {
   var scoped = App.scopePlayerIds;
@@ -3380,7 +3396,8 @@ function screenAdminLogin() {
     '</div>';
 }
 function trySubmitStaffCode(entered) {
-  if (entered === info.adminCode) { App.error = ""; nav("adminHome"); return true; }
+  var normalized = (entered || "").trim();
+  if (normalized === (info.adminCode || "").trim() || normalized.toUpperCase() === (info.adminCode || "").trim().toUpperCase()) { App.error = ""; nav("adminHome"); return true; }
   var upper = entered.toUpperCase();
   var staff = (info.specialStaff || []).find(function (s) { return s.code && s.code.toUpperCase() === upper; });
   if (staff) {
