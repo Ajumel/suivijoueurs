@@ -2330,8 +2330,12 @@ function dayDetailContent(pdata, iso, wd) {
     if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (vendredi, bilan de semaine) : pas rempli.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036">Sommeil ' + fmtNote(hj.sommeil, 10) + ' · Forme mentale ' + fmtNote(hj.formeMentale, 10) + ' · Forme physique ' + fmtNote(hj.formePhysique, 10) + ' · Confiance ' + fmtNote(hj.confiance, 10) + '</div>';
+      if (hj.principeOffensif) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Principe offensif :</b> ' + esc(hj.principeOffensif) + '</div>';
+      if (hj.principeDefensif) html += '<div style="font-size:12px;color:#334036"><b>Principe défensif :</b> ' + esc(hj.principeDefensif) + '</div>';
       if (hj.pointsForts) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Point fort :</b> ' + esc(hj.pointsForts) + '</div>';
       if (hj.pointsAmeliorer) html += '<div style="font-size:12px;color:#334036"><b>Point faible :</b> ' + esc(hj.pointsAmeliorer) + '</div>';
+      html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Match section cette semaine :</b> ' + esc(hj.aJoueSection || "—") + (hj.aJoueSection === "Oui" && hj.dureeJeuSection ? ' (' + esc(hj.dureeJeuSection) + ')' : '') + '</div>';
+      if (hj.infosEntraineur) html += '<div style="font-size:12px;color:#334036"><b>Infos entraîneur :</b> ' + esc(hj.infosEntraineur) + '</div>';
       html += '<div style="font-size:12px;font-weight:700;color:' + (hj.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + ';margin-top:2px">' + (hj.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div>';
     }
     html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd"><b style="font-size:11px;color:var(--rouge)">ÉVALUATION DE LA SEMAINE</b>';
@@ -2863,7 +2867,7 @@ function openBulkDateScoped(ids, backTarget, title) {
   App.scopeTitle = title || "";
   nav("adminBulkDate");
 }
-var BULK_DATE_TYPES = [["seance", "Ma séance"], ["semaine", "Évaluation de semaine"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Match club (samedi)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
+var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Match club (samedi)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
 function screenAdminBulkDate() {
   var scoped = App.scopePlayerIds;
   var visiblePlayers = scoped ? players.filter(function (p) { return scoped.indexOf(p.id) !== -1; }) : players;
@@ -2946,19 +2950,6 @@ function shiftBulkDate(delta) {
 function renderBulkDateEntry(pdata, playerId) {
   var type = App.bulk.dateType, mode = App.bulk.mode, date = App.bulk.date;
   function pick(list) { return mode === "latest" ? latestOf(list) : list.find(function (e) { return e.date === date; }); }
-  if (type === "semaine") {
-    var wk = mode === "latest"
-      ? (pdata.semaines || []).slice().sort(function (a, b) { return a.weekStart < b.weekStart ? 1 : -1; })[0]
-      : pdata.semaines.find(function (s) { return s.weekStart === mondayOf(date); });
-    if (!wk) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
-    function gradeCell(label, g) {
-      var gi = g ? GRADE_INFO[g] : null;
-      return '<div style="flex:1"><div style="font-size:10px;color:var(--gris)">' + label + '</div>' +
-        (gi ? '<div style="font-weight:800;font-size:15px;color:' + gi.c + '">' + g + '</div>' : '<div style="color:var(--gris)">—</div>') + '</div>';
-    }
-    return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">Semaine du ' + fmtShort(wk.weekStart) + '</span>' +
-      '<div style="display:flex;gap:10px;margin-top:6px">' + gradeCell("Perf. (joueur)", wk.perfJoueur) + gradeCell("Perf. (coach)", wk.perfCoach) + gradeCell("Investiss. (joueur)", wk.investJoueur) + gradeCell("Investiss. (coach)", wk.investCoach) + '</div></div>';
-  }
   if (type === "seance") {
     var obj = pick(pdata.objectifs);
     if (!obj) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
@@ -2970,15 +2961,25 @@ function renderBulkDateEntry(pdata, playerId) {
   }
   if (type === "hooperJeudi") {
     var e = pick(pdata.ficheVendredi);
-    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    var refDate = e ? e.date : date;
+    var wk = pdata.semaines.find(function (s) { return s.weekStart === mondayOf(refDate); });
+    function gradeCell(label, g) {
+      var gi = g ? GRADE_INFO[g] : null;
+      return '<div style="flex:1"><div style="font-size:10px;color:var(--gris)">' + label + '</div>' +
+        (gi ? '<div style="font-weight:800;font-size:15px;color:' + gi.c + '">' + g + '</div>' : '<div style="color:var(--gris)">—</div>') + '</div>';
+    }
+    var evalHtml = wk ? '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ddd"><div style="display:flex;gap:10px">' + gradeCell("Perf. (joueur)", wk.perfJoueur) + gradeCell("Perf. (coach)", wk.perfCoach) + gradeCell("Investiss. (joueur)", wk.investJoueur) + gradeCell("Investiss. (coach)", wk.investCoach) + '</div>' +
+      (wk.commentaire ? '<div style="margin-top:4px;font-size:12px;color:#334036"><b>Commentaire :</b> ' + esc(wk.commentaire) + '</div>' : '') + '</div>' : '';
+    if (!e) return (evalHtml ? '<div style="font-size:12px;color:var(--gris);font-style:italic">Fiche du vendredi non remplie.</div>' + evalHtml : '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>');
     return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span>' +
       '<div style="margin-top:2px">Sommeil ' + fmtNoteAlert(e.sommeil, 10, false) + ' · Forme mentale ' + fmtNoteAlert(e.formeMentale, 10, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysique, 10, false) + ' · Confiance ' + fmtNoteAlert(e.confiance, 10, false) + '</div>' +
       (e.principeOffensif ? '<div style="margin-top:2px"><b>Principe offensif :</b> ' + esc(e.principeOffensif) + '</div>' : "") +
       (e.principeDefensif ? '<div><b>Principe défensif :</b> ' + esc(e.principeDefensif) + '</div>' : "") +
       (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
       (e.pointsAmeliorer ? '<div><b>À améliorer :</b> ' + esc(e.pointsAmeliorer) + '</div>' : "") +
+      '<div><b>Match section cette semaine :</b> ' + esc(e.aJoueSection || "—") + (e.aJoueSection === "Oui" && e.dureeJeuSection ? ' (' + esc(e.dureeJeuSection) + ')' : '') + '</div>' +
       (e.infosEntraineur ? '<div><b>Infos entraîneur :</b> ' + esc(e.infosEntraineur) + '</div>' : "") +
-      '<div style="font-weight:700;margin-top:2px;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div></div>';
+      '<div style="font-weight:700;margin-top:2px;color:' + (e.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + '">' + (e.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div>' + evalHtml + '</div>';
   }
   if (type === "hooperWeekend") {
     var e = pick(pdata.hooperLundi);
