@@ -904,6 +904,13 @@ function voiceTextarea(fieldName, value, placeholder, extraAttrs) {
     ' placeholder="' + esc(placeholder || "") + '" oninput="draftSet(\'' + fieldName + '\', this.value)">' + esc(value) + '</textarea>' +
     micHtml(fieldName) + '</div>';
 }
+// Meme principe que voiceTextarea, mais pour les ecrans "en masse" (plusieurs joueurs sur la
+// meme page) : chaque champ a un identifiant unique (pas seulement le nom du champ) et un
+// gestionnaire de saisie personnalise, puisqu'il n'y a pas de "draft" partage a mettre a jour.
+function voiceTextareaCustom(uniqueId, value, placeholder, oninputJs) {
+  return '<div class="voice-wrap"><textarea id="f-' + uniqueId + '" placeholder="' + esc(placeholder || "") + '" oninput="' + oninputJs + '">' + esc(value) + '</textarea>' +
+    micHtml(uniqueId) + '</div>';
+}
 
 /* ============ DRAFT (état de formulaire local, sans re-render à chaque frappe) ============ */
 var draft = {};
@@ -1207,7 +1214,10 @@ function tabPlanning(isAdmin) {
         html += '<div onclick="selectPlanningDay(\'' + day.date + '\')" style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;cursor:pointer;background:' +
           (isSelected ? "#FDF6E3" : isToday ? "#fbf6e8" : "transparent") + ';border-left:4px solid ' + (day.theme ? themeColor(day.theme) : "transparent") + ';margin-bottom:2px">' +
           '<div style="width:34px;flex-shrink:0;text-align:center"><div style="font-size:9px;font-weight:700;color:var(--gris)">' + letter + '</div><div style="font-size:13px;font-weight:800;color:#334036">' + dNum + '</div></div>' +
-          '<div style="flex:1;font-size:12px;color:#334036">' + (day.evenement ? '<span style="font-weight:700">' + (day.heure ? '<span style="color:var(--rouge)">' + esc(day.heure) + ' </span>' : '') + esc(day.evenement) + '</span>' : '') + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+          (day.theme ? '<div style="font-size:10px;font-weight:700;color:' + themeColor(day.theme) + '">' + esc(day.theme) + '</div>' : '') +
+          (day.evenement ? '<div style="font-size:12px;color:#334036;font-weight:700">' + (day.heure ? '<span style="color:var(--rouge)">' + esc(day.heure) + ' </span>' : '') + esc(day.evenement) + '</div>' : (!day.theme ? '<div style="font-size:11px;color:#c3c8bd">—</div>' : '')) +
+          '</div>' +
           (day.evenement ? '<span style="width:6px;height:6px;border-radius:50%;background:#B3412E;flex-shrink:0"></span>' : '') +
           '</div>';
       });
@@ -1698,7 +1708,8 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   var hjFilled = new Set();
   pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
   html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate", 5) +
-    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
+    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '') +
+    '<div style="font-size:11px;color:var(--gris);margin:-6px 0 10px">Seul le vendredi est sélectionnable ici. L\'évaluation ci-dessous concerne toute la semaine, pas seulement ce jour-là.</div>';
 
   // --- Évaluation de la semaine ---
   var canEditJoueurGrade = isAdmin || role === "joueur";
@@ -2212,11 +2223,9 @@ function dayHasAnyData(iso, activityData) {
       if (pdata.objectifs.some(function (e) { return e.date === iso; })) return true;
       if (pdata.ressenti.some(function (e) { return e.date === iso; })) return true;
     }
-    if (wd === 4) {
+    if (wd === 5) {
       var mon = mondayOf(iso);
       if (pdata.semaines.some(function (s) { return s.weekStart === mon && (s.perfJoueur != null || s.investJoueur != null); })) return true;
-    }
-    if (wd === 5) {
       if (pdata.ficheVendredi.some(function (e) { return e.date === iso; })) return true;
     }
     if (wd === 6) {
@@ -2314,17 +2323,9 @@ function dayDetailContent(pdata, iso, wd) {
         '<div style="font-size:12px;color:#334036"><b>Après</b> — plaisir ' + fmtNote(obj.plaisir, 10) + ', performance ' + fmtNote(obj.performance, 10) + ', charge perçue ' + fmtNote(obj.chargePercue, 10) + ', fatigue ' + fmtNote(obj.fatigue, 10) + '</div>';
     }
   }
-  if (wd === 4) {
+  if (wd === 5) {
     var mon = mondayOf(iso);
     var sem = pdata.semaines.find(function (s) { return s.weekStart === mon; });
-    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd"><b style="font-size:11px;color:var(--rouge)">MA SEMAINE</b>';
-    if (sem && (sem.perfJoueur != null || sem.investJoueur != null || sem.perfCoach != null || sem.investCoach != null)) {
-      html += '<div style="font-size:12px;color:#334036;margin-top:4px">Performance : joueur ' + (sem.perfJoueur || "—") + ", coach " + (sem.perfCoach || "—") +
-        ' · Investissement : joueur ' + (sem.investJoueur || "—") + ", coach " + (sem.investCoach || "—") + '</div>';
-    } else html += '<div style="font-size:12px;color:var(--gris);font-style:italic;margin-top:4px">Pas encore rempli.</div>';
-    html += '</div>';
-  }
-  if (wd === 5) {
     var hj = pdata.ficheVendredi.find(function (e) { return e.date === iso; });
     if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (vendredi, bilan de semaine) : pas rempli.</div>';
     else {
@@ -2333,6 +2334,13 @@ function dayDetailContent(pdata, iso, wd) {
       if (hj.pointsAmeliorer) html += '<div style="font-size:12px;color:#334036"><b>Point faible :</b> ' + esc(hj.pointsAmeliorer) + '</div>';
       html += '<div style="font-size:12px;font-weight:700;color:' + (hj.presenceVendredi === "Oui" ? "#2b6b1f" : "#a33323") + ';margin-top:2px">' + (hj.presenceVendredi === "Oui" ? "Présent vendredi" : "Absent vendredi") + '</div>';
     }
+    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd"><b style="font-size:11px;color:var(--rouge)">ÉVALUATION DE LA SEMAINE</b>';
+    if (sem && (sem.perfJoueur != null || sem.investJoueur != null || sem.perfCoach != null || sem.investCoach != null)) {
+      html += '<div style="font-size:12px;color:#334036;margin-top:4px">Performance : joueur ' + (sem.perfJoueur || "—") + ", coach " + (sem.perfCoach || "—") +
+        ' · Investissement : joueur ' + (sem.investJoueur || "—") + ", coach " + (sem.investCoach || "—") + '</div>';
+      if (sem.commentaire) html += '<div style="font-size:12px;color:#334036;margin-top:4px"><b>Commentaire :</b> ' + esc(sem.commentaire) + '</div>';
+    } else html += '<div style="font-size:12px;color:var(--gris);font-style:italic;margin-top:4px">Pas encore rempli.</div>';
+    html += '</div>';
   }
   if (wd === 6) {
     var hw = pdata.hooperLundi.find(function (e) { return e.date === iso; });
@@ -2681,7 +2689,7 @@ function screenAdminBulkSemaine() {
         '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "investJoueur", entry.investJoueur) + '</div>' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "investCoach", entry.investCoach) + '</div></div></div>' +
-        '<div class="field"><label>Commentaire</label><div class="voice-wrap"><textarea oninput="setBulkSemaineComment(\'' + p.id + '\',this.value)">' + esc(entry.commentaire || "") + '</textarea></div></div></div>';
+        '<div class="field"><label>Commentaire</label>' + voiceTextareaCustom("semcom-" + p.id, entry.commentaire || "", "", "setBulkSemaineComment('" + p.id + "',this.value)") + '</div></div>';
     });
   });
   html += '</div>';
@@ -2773,7 +2781,7 @@ function screenAdminBulkMatch() {
             (entry.commentMatch ? '<div style="margin-top:4px">' + esc(entry.commentMatch) + '</div>' : "") +
             (entry.noteJoueur != null ? ' <b>(' + entry.noteJoueur + '/10)</b>' : "") + '</div>';
         } else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore donné son appréciation.</div>';
-        html += '<div class="voice-wrap"><textarea placeholder="Ton commentaire" oninput="setBulkComment(\'' + p.id + '\',\'commentaireProf\',this.value)">' + esc(entry.commentaireProf) + '</textarea></div>' +
+        html += voiceTextareaCustom("matchcom-" + p.id, entry.commentaireProf, "Ton commentaire", "setBulkComment('" + p.id + "','commentaireProf',this.value)") +
           '<div style="font-size:11px;color:var(--gris);margin:8px 0 4px">Note / 10</div>' +
           '<div style="display:flex;gap:4px;flex-wrap:wrap">' + Array.from({ length: 11 }, function (_, n) { return n; }).map(function (n) {
             var active = entry.noteProf === n;
@@ -3069,9 +3077,9 @@ function screenBulkClubMatch() {
           '<div style="margin-top:2px">Bien joué ' + fmtNote(entry.bienJoue, 5) + ' · Forme physique ' + fmtNote(entry.formePhysiqueWE, 5) + ' · Heureux ' + fmtNote(entry.heureuxMatch, 5) + ' · Prêt lundi ' + fmtNote(entry.pretLundi, 5) + '</div></div>';
       } else html += '<div style="font-size:12px;color:var(--gris);margin-bottom:8px;font-style:italic">Le joueur n\'a pas encore rempli sa fiche pour ce samedi.</div>';
       html += '<div class="field"><label>Résumé du match (visible par le joueur)</label>' +
-        '<div class="voice-wrap"><textarea oninput="setBulkClubMatchField(\'' + p.id + '\',\'' + date + '\',\'resumeMatchCoach\',this.value)">' + esc(entry ? entry.resumeMatchCoach : "") + '</textarea></div></div>' +
+        voiceTextareaCustom("resume-" + p.id, entry ? entry.resumeMatchCoach : "", "", "setBulkClubMatchField('" + p.id + "','" + date + "','resumeMatchCoach',this.value)") + '</div>' +
         '<div class="field"><label>Commentaire divers</label>' +
-        '<div class="voice-wrap"><textarea oninput="setBulkClubMatchField(\'' + p.id + '\',\'' + date + '\',\'commentaireDivers\',this.value)">' + esc(entry ? entry.commentaireDivers : "") + '</textarea></div></div>' +
+        voiceTextareaCustom("divers-" + p.id, entry ? entry.commentaireDivers : "", "", "setBulkClubMatchField('" + p.id + "','" + date + "','commentaireDivers',this.value)") + '</div>' +
         '</div>';
     });
   });
