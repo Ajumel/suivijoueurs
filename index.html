@@ -791,6 +791,7 @@ var App = {
   scopePlayerIds: null, // si non-null : limite Planning/Vue en direct/Bilan de match a ces joueurs
   scopeBackTarget: "adminHome", // ecran de retour pour ces vues partagees (adminHome/clubHome/specialStaffHome)
   scopeTitle: "", // sous-titre affiche en haut de ces vues quand elles sont limitees
+  previewAs: null, // "joueur"|"entraineur"|null : apercu admin de la vue d'un autre role
 };
 
 var players = Storage.get("sef-players-v1");
@@ -1685,16 +1686,26 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === weekStart; }) || [weekStart, addDaysIso(weekStart, 6)];
   var semaineEntry = mergeDuplicates(pdata.semaines, function (e) { return e.weekStart === weekStart; });
   if (!draft._hjInit || draft._hjDate !== App.hooperJeudiDate) {
-    resetDraft(current || { sommeil: null, formeMentale: null, formePhysique: null, confiance: null, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui", remarqueStaff: "" });
+    resetDraft(current || { sommeil: null, formeMentale: null, formePhysique: null, confiance: null, principeOffensif: "", principeDefensif: "", pointsForts: "", pointsAmeliorer: "", aJoueSection: "Oui", dureeJeuSection: "", infosEntraineur: "", presenceVendredi: "Oui" });
     mergeIntoDraft(semaineEntry || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" });
     draft._hjInit = true; draft._hjDate = App.hooperJeudiDate;
   }
   var f = draft;
   var html = '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">Bilan de ta semaine — à remplir le vendredi, à partager avec ton entraîneur de club avant la séance du soir.</div>';
 
-  // --- Évaluation de la semaine, tout en haut de la page ---
+  // --- Calendrier, en haut de la page ---
+  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
+  var hjFilled = new Set();
+  pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
+  html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate", 5) +
+    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
+
+  // --- Évaluation de la semaine ---
   var canEditJoueurGrade = isAdmin || role === "joueur";
-  var joueurDone = f.perfJoueur != null && f.investJoueur != null;
+  // Le coach (educateur de club ou staff) et l'admin voient toujours la note et le commentaire
+  // du responsable, meme si le joueur n'a pas encore rempli sa propre note. Seul le joueur
+  // doit remplir la sienne avant de voir celle du responsable.
+  var canSeeCoachSide = isAdmin || role === "entraineur" || (f.perfJoueur != null && f.investJoueur != null);
   html += '<div class="card"><div style="font-weight:800;color:var(--noir);font-size:13px;text-transform:uppercase;margin-bottom:4px">Évaluation de la semaine</div>' +
     '<div style="font-size:11px;color:var(--gris);margin-bottom:10px">Semaine du ' + week[0] + ' au ' + week[1] + '</div>';
   html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div>' +
@@ -1702,7 +1713,7 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   html += '<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">INVESTISSEMENT MENTAL</div>' +
     gradePicker("investJoueur", f.investJoueur, !canEditJoueurGrade) + '</div>';
 
-  if (isAdmin || joueurDone) {
+  if (canSeeCoachSide) {
     html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee">' +
       '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin-bottom:6px">Note du responsable — performance</div>' + gradePicker("perfCoach", f.perfCoach, !isAdmin) +
       '<div style="font-size:12px;font-weight:700;color:#5b6b5f;margin:10px 0 6px">Note du responsable — investissement</div>' + gradePicker("investCoach", f.investCoach, !isAdmin) +
@@ -1714,11 +1725,6 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
   html += '</div>';
 
   // --- Fiche du vendredi ---
-  if (!canEdit) html += '<div class="card-gold" style="padding:10px;border-radius:10px;font-size:12px;color:var(--gris);margin-bottom:10px">Lecture seule — cette fiche est remplie par le joueur.</div>';
-  var hjFilled = new Set();
-  pdata.ficheVendredi.forEach(function (e) { hjFilled.add(e.date); });
-  html += miniCalendar("hj", App.hooperJeudiDate, hjFilled, "setHooperJeudiDate", 5) +
-    (current && canEdit ? '<div style="font-size:11px;color:var(--rouge);font-weight:700;margin:-10px 0 10px">Fiche déjà enregistrée pour cette date — modifiable ci-dessous</div>' : '');
   html += '<div class="card">';
   if (canEdit) {
     html += oneToTenSlider("sommeil", "J'ai bien dormi", f.sommeil) +
@@ -1746,21 +1752,6 @@ function tabHooperJeudi(player, pdata, isAdmin, role) {
     ]);
   }
   html += '</div>';
-
-  if (role !== "joueur") {
-    var canEditRemark = isAdmin || (role === "entraineur" && App.activeSpecialStaffId);
-    html += '<div class="card" style="border:1px solid var(--rouge)"><div style="font-weight:800;color:var(--rouge);font-size:12px;text-transform:uppercase;margin-bottom:8px">Remarque du staff</div>' +
-      '<div style="font-size:11px;color:var(--gris);margin-bottom:8px">Visible par l\'éducateur de club avant le match — ex : joueur blessé, très en forme, attitude à surveiller...</div>';
-    if (canEditRemark) {
-      html += '<div class="voice-wrap"><textarea placeholder="Ex : douleur au genou signalée mardi, à surveiller." oninput="draftSet(\'remarqueStaff\', this.value)">' + esc(f.remarqueStaff || "") + '</textarea></div>' +
-        '<button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="saveHooperRemarque()">Enregistrer la remarque</button>';
-    } else if (f.remarqueStaff) {
-      html += '<div style="font-size:13px;color:#334036;background:var(--or-clair);border-radius:8px;padding:8px">' + esc(f.remarqueStaff) + '</div>';
-    } else {
-      html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune remarque pour le moment.</div>';
-    }
-    html += '</div>';
-  }
   return html;
 }
 function readOnlyRows(pairs) {
@@ -3482,6 +3473,8 @@ var PH_TABS = [
 function openPlayer(playerId, adminFlag, targetTab) {
   App.activePlayerId = playerId;
   App.tab = targetTab || "identite";
+  App.previewAs = null;
+  resetDraft({});
   nav(adminFlag ? "adminPlayer" : "player");
 }
 function setPHTab(key) { autoSaveIfDirty(); App.tab = key; resetDraft({}); render(); }
@@ -3489,6 +3482,7 @@ function setPHTab(key) { autoSaveIfDirty(); App.tab = key; resetDraft({}); rende
 function exitPlayer() {
   autoSaveIfDirty();
   App.activePlayerId = null;
+  App.previewAs = null;
   if (App.screen === "player") {
     if (App.activeClub) nav("clubHome"); else { App.code = ""; nav("welcome"); }
   } else {
@@ -3496,10 +3490,12 @@ function exitPlayer() {
   }
 }
 
-function screenPlayerHome(isAdmin) {
+function screenPlayerHome(isAdminReal) {
   var player = players.find(function (p) { return p.id === App.activePlayerId; });
   if (!player) return screenWelcome();
-  var role = isAdmin ? "admin" : App.roleChoice;
+  var previewAs = isAdminReal ? App.previewAs : null;
+  var isAdmin = isAdminReal && !previewAs;
+  var role = isAdmin ? "admin" : (previewAs || App.roleChoice);
   var roleLabel = isAdmin ? "Vue administrateur" : (role === "joueur" ? "Vue joueur" : "Vue éducateur");
   var pdata = getPlayerData(player.id);
   if (!App.tab) App.tab = "identite";
@@ -3533,13 +3529,28 @@ function screenPlayerHome(isAdmin) {
   var swipeAttrs = App.tab === "seance"
     ? ' ontouchstart="swipeStart(event,\'seance\')" ontouchend="swipeEnd(event)"'
     : (isAdmin ? ' ontouchstart="swipeStart(event,\'player\')" ontouchend="swipeEnd(event)"' : "");
+  var previewBanner = "";
+  if (isAdminReal) {
+    if (previewAs) {
+      previewBanner = '<div style="background:var(--rouge);color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:700">' +
+        '👁️ Aperçu — ' + (previewAs === "joueur" ? "Vue joueur" : "Vue éducateur") + ' (aucune écriture ne sera transmise autrement) ' +
+        '<button onclick="setPreviewAs(null)" style="margin-left:10px;background:#fff;color:var(--rouge);border:none;border-radius:6px;padding:3px 10px;font-weight:700;cursor:pointer">Quitter l\'aperçu</button></div>';
+    } else {
+      previewBanner = '<div style="display:flex;gap:8px;padding:8px 14px;background:#f7f8f4;border-bottom:1px solid #e3e7de">' +
+        '<button onclick="setPreviewAs(\'joueur\')" style="flex:1;border:1px solid #d7dcd3;background:#fff;border-radius:8px;padding:6px;font-size:12px;font-weight:700;color:var(--noir);cursor:pointer">👁️ Vue joueur</button>' +
+        '<button onclick="setPreviewAs(\'entraineur\')" style="flex:1;border:1px solid #d7dcd3;background:#fff;border-radius:8px;padding:6px;font-size:12px;font-weight:700;color:var(--noir);cursor:pointer">👁️ Vue éducateur</button>' +
+        '</div>';
+    }
+  }
   return '<div class="header">' +
       nameBlock +
-      '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitPlayer()">' + (isAdmin ? "Retour" : "Quitter") + '</button></div>' +
+      '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="' + (previewAs ? "setPreviewAs(null)" : "exitPlayer()") + '">' + (isAdmin ? "Retour" : (previewAs ? "Retour admin" : "Quitter")) + '</button></div>' +
     '</div>' +
+    previewBanner +
     '<div style="flex:1;padding:14px;background:var(--bg)"' + swipeAttrs + '>' + content + '</div>' +
     '<div class="tabbar">' + tabsHtml + '</div>';
 }
+function setPreviewAs(mode) { App.previewAs = mode; resetDraft({}); render(); }
 function sortedPlayerIds() {
   var groupOrder = Array.from(new Set(players.map(function (p) { return p.groupe; })));
   return players.slice().sort(function (a, b) {
