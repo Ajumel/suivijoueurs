@@ -2176,7 +2176,7 @@ function screenClubHome() {
     '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitClub()">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg)">';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="App.scopeBackTarget=\'clubHome\'; App.scopeTitle=\'' + esc(club.club) + '\'; nav(\'planningScoped\')">📅 Planning annuel</button>';
-  html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="openBulkDateScoped(' + idsJsArray(ids) + ', \'clubHome\', \'' + esc(club.club) + '\')">👥 Vue en direct</button>';
+  html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="openBulkDateScoped(' + idsJsArray(ids) + ', \'clubHome\', \'' + esc(club.club) + '\')">🏷️ Vue par thème</button>';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="openBulkClubMatch(' + idsJsArray(ids) + ', \'clubHome\', \'' + esc(club.club) + '\')">⚽ Bilan de match de club</button>';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="App.scopeBackTarget=\'clubHome\'; App.scopeTitle=\'' + esc(club.club) + '\'; nav(\'documentsScoped\')">📋 Infos & documents</button>';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:14px" onclick="nav(\'trombi\')">🪪 Trombinoscope</button>';
@@ -2199,7 +2199,7 @@ function screenSpecialStaffHome() {
     '<div style="display:flex;align-items:center">' + refreshButtonHtml() + '<button class="btn-header" onclick="exitSpecialStaff()">Quitter</button></div></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg)">';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="App.scopeBackTarget=\'specialStaffHome\'; App.scopeTitle=\'' + esc(staff.nom) + '\'; nav(\'planningScoped\')">📅 Planning annuel</button>';
-  html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="openBulkDateScoped(' + idsJsArray(ids) + ', \'specialStaffHome\', \'' + esc(staff.nom) + '\')">👥 Vue en direct</button>';
+  html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="openBulkDateScoped(' + idsJsArray(ids) + ', \'specialStaffHome\', \'' + esc(staff.nom) + '\')">🏷️ Vue par thème</button>';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:8px" onclick="App.scopeBackTarget=\'specialStaffHome\'; App.scopeTitle=\'' + esc(staff.nom) + '\'; nav(\'documentsScoped\')">📋 Infos & documents</button>';
   html += '<button class="btn btn-ghost btn-block" style="margin-bottom:14px" onclick="nav(\'trombi\')">🪪 Trombinoscope</button>';
   html += '<div style="font-size:12px;color:var(--gris);margin-bottom:12px">' + staffPlayers.length + ' joueur' + (staffPlayers.length > 1 ? "s" : "") + ' suivi' + (staffPlayers.length > 1 ? "s" : "") + '.</div>';
@@ -2279,6 +2279,10 @@ function openAdminDay(iso) {
   App.bulk.data = loadAllPlayerData();
   nav("adminDayDetail");
 }
+function shiftAdminDay(delta) {
+  App.adminSelectedDay = addDaysIso(App.adminSelectedDay, delta);
+  render();
+}
 function screenAdminDayDetail() {
   var iso = App.adminSelectedDay;
   var wd = weekdayOfIso(iso) === 0 ? 7 : weekdayOfIso(iso);
@@ -2286,7 +2290,12 @@ function screenAdminDayDetail() {
   var groups = Array.from(new Set(players.map(function (p) { return p.groupe; })));
 
   var html = '<div class="header"><div><div class="title">' + wdNames[wd] + ' ' + fmtShort(iso) + '</div><div class="sub">Détail du jour</div></div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
-    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'adminday\')" ontouchend="swipeEnd(event)">';
+  html += '<div class="card"><div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<button onclick="shiftAdminDay(-1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">\u2039 Jour préc.</button>' +
+    '<span style="font-size:11px;color:var(--gris)">glisser aussi possible</span>' +
+    '<button onclick="shiftAdminDay(1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">Jour suiv. \u203a</button>' +
+    '</div></div>';
 
   if (wd < 1 || wd > 6) {
     html += '<div class="empty">Dimanche : aucune échéance particulière ce jour-là.</div></div>';
@@ -2376,7 +2385,7 @@ function screenAdminHome() {
 
   html += adminCalendarHtml(activityData);
 
-  html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">👥 Vue en direct (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="openBulkDate(\'seance\')">🏷️ Vue par thème (tous les joueurs, tous les onglets)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkSemaine()">⚡ Remplir l\'évaluation de la semaine (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openBulkMatch()">⚽ Nouveau bilan de match (tout le groupe)</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="openManquants()">🚦 Qui a rempli ? (code couleur)</button><div style="height:10px"></div>';
@@ -2850,8 +2859,8 @@ function setBulkComment(playerId, field, value) {
 function openBulkDate(type) {
   App.bulk.data = loadAllPlayerData();
   App.bulk.dateType = type;
-  App.bulk.date = todayIso();
-  App.bulk.mode = "latest";
+  App.bulk.date = snapBulkDateToType(type, todayIso());
+  App.bulk.mode = "date";
   App.scopePlayerIds = null;
   App.scopeBackTarget = "adminHome";
   App.scopeTitle = "";
@@ -2861,38 +2870,32 @@ function openBulkDateScoped(ids, backTarget, title) {
   App.bulk.data = loadAllPlayerData();
   App.bulk.dateType = "seance";
   App.bulk.date = todayIso();
-  App.bulk.mode = "latest";
+  App.bulk.mode = "date";
   App.scopePlayerIds = ids;
   App.scopeBackTarget = backTarget;
   App.scopeTitle = title || "";
   nav("adminBulkDate");
 }
+function setBulkDateFromCalendar(iso) { App.bulk.date = iso; render(); }
 var BULK_DATE_TYPES = [["seance", "Ma séance"], ["hooperJeudi", "Hooper (vendredi)"], ["hooperWeekend", "Match club (samedi)"], ["medical", "Médical"], ["tests", "Tests"], ["blessures", "Blessures"]];
 function screenAdminBulkDate() {
   var scoped = App.scopePlayerIds;
   var visiblePlayers = scoped ? players.filter(function (p) { return scoped.indexOf(p.id) !== -1; }) : players;
   var groups = Array.from(new Set(visiblePlayers.map(function (p) { return p.groupe; })));
-  var html = '<div class="header"><div><div class="title">Vue en direct' + (scoped ? "" : " — tous les joueurs") + '</div>' + (App.scopeTitle ? '<div class="sub">' + esc(App.scopeTitle) + '</div>' : '') + '</div><button class="btn-header" onclick="nav(\'' + App.scopeBackTarget + '\')">Retour</button></div>' +
+  var html = '<div class="header"><div><div class="title">Vue par thème' + (scoped ? "" : " — tous les joueurs") + '</div>' + (App.scopeTitle ? '<div class="sub">' + esc(App.scopeTitle) + '</div>' : '') + '</div><button class="btn-header" onclick="nav(\'' + App.scopeBackTarget + '\')">Retour</button></div>' +
     '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto" ontouchstart="swipeStart(event,\'bulkdate\')" ontouchend="swipeEnd(event)">';
   html += '<div class="card"><div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
-    BULK_DATE_TYPES.map(function (t) { return '<button class="pill ' + (App.bulk.dateType === t[0] ? "active" : "") + '" style="flex:1 1 30%" onclick="setBulkDateType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>' +
-    '<div class="row" style="margin-bottom:' + (App.bulk.mode === "date" ? "10px" : "0") + '">' +
-    ['latest', 'date'].map(function (m) {
-      var label = m === "latest" ? "Dernières entrées" : "Par date précise";
-      return '<button class="pill ' + (App.bulk.mode === m ? "active" : "") + '" onclick="setBulkMode(\'' + m + '\')">' + label + '</button>';
-    }).join("") + '</div>';
-  if (App.bulk.mode === "date") {
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-      '<button onclick="shiftBulkDate(-1)" style="border:none;background:#fff;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08)">\u2039</button>' +
-      '<input type="date" style="flex:1" value="' + App.bulk.date + '" onchange="App.bulk.date=this.value; render()">' +
-      '<button onclick="shiftBulkDate(1)" style="border:none;background:#fff;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08)">\u203a</button>' +
-      '</div><div style="font-size:11px;color:var(--gris)">glisser l\'écran aussi possible pour changer de jour</div>';
-  }
+    BULK_DATE_TYPES.map(function (t) { return '<button class="pill ' + (App.bulk.dateType === t[0] ? "active" : "") + '" style="flex:1 1 30%" onclick="setBulkDateType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+    '<button onclick="shiftBulkDate(-1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">\u2039 Jour préc.</button>' +
+    '<span style="font-size:11px;color:var(--gris)">glisser aussi possible</span>' +
+    '<button onclick="shiftBulkDate(1)" style="border:none;background:#f7f8f4;border-radius:8px;color:var(--rouge);font-weight:700;font-size:16px;cursor:pointer;padding:6px 12px">Jour suiv. \u203a</button>' +
+    '</div></div>';
+  html += miniCalendar("bulkdt", App.bulk.date, new Set(), "setBulkDateFromCalendar", bulkTypeAnchorWeekday(App.bulk.dateType) || (App.bulk.dateType === "seance" ? [1, 2, 3, 4] : null));
   if (["seance", "hooperJeudi", "hooperWeekend"].indexOf(App.bulk.dateType) !== -1) {
-    html += '<div style="font-size:11px;color:var(--gris);margin-top:10px;padding-top:8px;border-top:1px solid #eee">' +
+    html += '<div class="card" style="font-size:11px;color:var(--gris)">' +
       '<span style="color:#2b6b1f;font-weight:700">Vert</span> = pas d\'inquiétude particulière · <span style="color:#B3412E;font-weight:700">Rouge</span> = valeur à surveiller (forme/motivation/plaisir/performance bas, ou charge/fatigue élevée) — quel que soit le sens du chiffre.</div>';
   }
-  html += '</div>';
 
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
@@ -2987,6 +2990,7 @@ function renderBulkDateEntry(pdata, playerId) {
     var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score : <b>' + (e.score != null ? e.score + "/20" : "pas complet") + '</b></div>' +
       '<div style="margin-top:2px">Bien joué ' + fmtNoteAlert(e.bienJoue, 5, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysiqueWE, 5, false) + ' · Heureux du match ' + fmtNoteAlert(e.heureuxMatch, 5, false) + ' · Prêt lundi ' + fmtNoteAlert(e.pretLundi, 5, false) + '</div>' +
       (e.adversaireClub ? '<div style="margin-top:2px"><b>Contre :</b> ' + esc(e.adversaireClub) + (e.scoreClub ? ' (' + esc(e.scoreClub) + ')' : "") + '</div>' : "") +
+      (e.dureeJeuClub ? '<div><b>Temps de jeu :</b> ' + esc(e.dureeJeuClub) + '</div>' : "") +
       (e.posteJoueClub ? '<div><b>Poste :</b> ' + esc(e.posteJoueClub) + '</div>' : "") +
       (e.pointsForts ? '<div><b>Points forts :</b> ' + esc(e.pointsForts) + '</div>' : "") +
       (e.pointsFaibles ? '<div><b>Points faibles :</b> ' + esc(e.pointsFaibles) + '</div>' : "") +
@@ -3597,6 +3601,7 @@ function swipeEnd(e) {
   else if (ctx === "planning") shiftPlanningDay(dx < 0 ? 1 : -1);
   else if (ctx === "bulkmatch") shiftBulkMatch(dx < 0 ? 1 : -1);
   else if (ctx === "clubmatch") shiftClubMatchDate(dx < 0 ? 1 : -1);
+  else if (ctx === "adminday") shiftAdminDay(dx < 0 ? 1 : -1);
 }
 function switchSeanceDay(delta) {
   var next = addDaysIso(App.seanceDate, delta);
