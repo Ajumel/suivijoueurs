@@ -202,6 +202,62 @@ function isInGracePeriod(key) {
   return !!ts && (Date.now() - ts) < PUSH_GRACE_MS;
 }
 
+// Recupere la valeur actuelle d'UNE cle sur le serveur, pour la fusionner avec ce qu'on
+// s'apprete a ecrire (au lieu d'ecraser aveuglement le travail fait depuis un autre appareil).
+function fetchRemoteValue(key) {
+  if (!SYNC_URL || !navigator.onLine || typeof fetch !== "function") return Promise.resolve(null);
+  return fetch(SYNC_URL)
+    .then(function (r) { return r.json(); })
+    .then(function (data) { return data && data.all ? data.all[key] : null; })
+    .catch(function () { return null; });
+}
+// ---- Fusion a 3 voies : base (derniere version connue du serveur), local (ce que je viens de
+// modifier), remote (ce que le serveur contient maintenant). Ce que JE viens de changer gagne,
+// le reste vient du serveur : rien ne se perd, une suppression reste supprimee, et un champ vide
+// volontaire reste vide.
+function jeq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function getBase(name) { try { return JSON.parse(localStorage.getItem("sef-base-" + name)); } catch (e) { return null; } }
+function setBase(name, value) { try { localStorage.setItem("sef-base-" + name, JSON.stringify(value)); } catch (e) {} }
+function merge3Obj(base, local, remote) {
+  base = base || {}; remote = remote || {};
+  var out = {}, seen = {};
+  Object.keys(remote).concat(Object.keys(local)).forEach(function (k) {
+    if (seen[k]) return; seen[k] = true;
+    var inL = k in local, inR = k in remote;
+    if (inL && (!inR || !jeq(local[k], base[k]))) out[k] = local[k];
+    else if (inR) out[k] = remote[k];
+  });
+  return out;
+}
+function merge3Array(base, local, remote, keyFn) {
+  var B = {}, L = {}, R = {}, order = [];
+  (base || []).forEach(function (e) { B[keyFn(e)] = e; });
+  (remote || []).forEach(function (e) { var k = keyFn(e); R[k] = e; order.push(k); });
+  (local || []).forEach(function (e) { var k = keyFn(e); L[k] = e; if (!(k in R)) order.push(k); });
+  var out = [];
+  order.forEach(function (k) {
+    var inB = k in B, inL = k in L, inR = k in R;
+    if (inL && inR) out.push(merge3Obj(B[k], L[k], R[k]));
+    else if (inL) { if (!inB || !jeq(L[k], B[k])) out.push(L[k]); }      // nouveau ici, ou modifie ici alors que supprime ailleurs
+    else if (inR) { if (!inB) out.push(R[k]); }                            // nouveau ailleurs ; si je l'avais supprime, il reste supprime
+  });
+  return out;
+}
+function mergeInfoDeep(remote, local) {
+  if (!remote) return local;
+  var base = getBase("info") || {};
+  var merged = merge3Obj(base, local, remote);
+  merged.documents = merge3Array(base.documents, local.documents, remote.documents, function (d) { return d.id; });
+  merged.specialStaff = merge3Array(base.specialStaff, local.specialStaff, remote.specialStaff, function (x) { return x.id; });
+  merged.programmation = merge3Array(base.programmation, local.programmation, remote.programmation, function (x) { return x.date; });
+  merged.clubCodes = merge3Obj(base.clubCodes, local.clubCodes || {}, remote.clubCodes || {});
+  return merged;
+}
+function mergePlayersDeep(remote, local) {
+  if (!remote) return local;
+  return merge3Array(getBase("players"), local, remote, function (p) { return p.id; });
+}
+
 var Storage = {
   get: function (key) {
     var raw = localStorage.getItem(key);
@@ -284,6 +340,8 @@ function pullAllFromRemote() {
       remoteKeys.forEach(function (k) {
         if (!pendingKeys[k] && !isInGracePeriod(k)) {
           localStorage.setItem(k, JSON.stringify(data.all[k]));
+          if (k === "sef-info-v1") setBase("info", data.all[k]);
+          if (k === "sef-players-v1") setBase("players", data.all[k]);
           changed = true;
         }
       });
@@ -314,12 +372,12 @@ function syncOnLoad() {
       if (!known["sef-info-v1"]) Storage.set("sef-info-v1", info);
       if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
     }
-    if (App.screen !== "welcome" && App.screen !== "adminLogin") render();
+    if (App.screen !== "welcome" && App.screen !== "adminLogin") renderBackground();
   });
 }
 
 window.addEventListener("online", function () { flushQueue(); syncOnLoad(); });
-window.addEventListener("offline", function () { render(); });
+window.addEventListener("offline", function () { renderBackground(); });
 // Filet de securite : si un envoi a echoue silencieusement (coupure reseau, erreur serveur
 // passagere...), on retente automatiquement toutes les 10 secondes tant qu'il reste des
 // elements en attente, au lieu de compter sur une autre sauvegarde pour relancer par hasard.
@@ -332,7 +390,7 @@ function periodicSync() {
       players = Storage.get("sef-players-v1") || players;
       info = Storage.get("sef-info-v1") || info;
       matches = Storage.get("sef-matches-v1") || matches;
-      if (App.screen !== "welcome" && App.screen !== "adminLogin") render();
+      if (App.screen !== "welcome" && App.screen !== "adminLogin") renderBackground();
     }
   });
 }
@@ -378,6 +436,12 @@ function fmtNote(v, max) { return v == null ? "—" : v + "/" + max; }
 // le sens du curseur (une fatigue elevee ET une motivation basse sont toutes les deux
 // affichees en rouge), pour pouvoir reperer les valeurs a surveiller d'un coup d'oeil sans
 // avoir a se rappeler, metrique par metrique, si c'est le chiffre haut ou bas qui alerte.
+// Quand un joueur n'a rien a la date consultee, indique a quelle date il a saisi pour la derniere
+// fois (permet de reperer immediatement une saisie faite a une autre date).
+function lastEntryHint(list) {
+  var l = latestOf(list || []);
+  return l && l.date ? ' <span style="color:#8a5a10">— dernière saisie le ' + fmtShort(l.date) + '</span>' : '';
+}
 function fmtNoteAlert(v, max, inverse) {
   if (v == null) return '<span style="color:var(--gris)">—</span>';
   var bad = inverse ? v >= max * 0.7 : v <= max * 0.4;
@@ -406,6 +470,9 @@ function mondayOf(iso) {
   return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate());
 }
 function sundayOf(iso) { return addDaysIso(mondayOf(iso), 6); }
+// Vendredi de la semaine en cours (lundi -> dimanche). Un joueur qui remplit son Hooper le jeudi
+// tombe ainsi sur le vendredi de SA semaine, pas sur celui de la semaine precedente.
+function currentWeekFriday() { return addDaysIso(mondayOf(todayIso()), 4); }
 function lastSaturday(iso) {
   var wd = weekdayOfIso(iso); // 0=dim,1=lun,...6=sam
   var diff = (wd + 1) % 7; // jours depuis le samedi le plus recent (sam=0, dim=1, lun=2, ..., ven=6)
@@ -440,9 +507,10 @@ function byNomPrenom(a, b) {
 function idsJsArray(ids) {
   return "[" + ids.map(function (id) { return "'" + id + "'"; }).join(",") + "]";
 }
-function clickableName(p, targetTab, isAdmin) {
+function clickableName(p, targetTab, isAdmin, ctx) {
   var adm = isAdmin === false ? false : true;
-  return '<span onclick="' + (adm ? 'openPlayer(\'' + p.id + '\', true, \'' + (targetTab || "identite") + '\')' : 'App.roleChoice=\'entraineur\'; openPlayer(\'' + p.id + '\', false, \'' + (targetTab || "identite") + '\')') + '" style="font-weight:700;color:#1C2620;font-size:14px;cursor:pointer;border-bottom:1px dashed var(--rouge)">' + esc(p.prenom) + " " + esc(p.nom) + ' \u203a</span>';
+  var cx = ctx ? ', \'' + ctx + '\'' : '';
+  return '<span onclick="' + (adm ? 'openPlayer(\'' + p.id + '\', true, \'' + (targetTab || "identite") + '\'' + cx + ')' : 'App.roleChoice=\'entraineur\'; openPlayer(\'' + p.id + '\', false, \'' + (targetTab || "identite") + '\'' + cx + ')') + '" style="font-weight:700;color:#1C2620;font-size:14px;cursor:pointer;border-bottom:1px dashed var(--rouge)">' + esc(p.prenom) + " " + esc(p.nom) + ' \u203a</span>';
 }
 
 /* ============ MINI CALENDRIER (avec jours remplis colorés) ============ */
@@ -817,10 +885,45 @@ function migratePlayers() {
   if (changed) Storage.set("sef-players-v1", players);
 }
 
-function savePlayers() { Storage.set("sef-players-v1", players); }
-function saveInfo(onResult) { Storage.set("sef-info-v1", info, onResult); draft._dirty = false; }
+function savePlayers() {
+  localStorage.setItem("sef-players-v1", JSON.stringify(players));
+  if (SYNC_URL && navigator.onLine) {
+    fetchRemoteValue("sef-players-v1").then(function (remote) {
+      players = mergePlayersDeep(remote, players);
+      localStorage.setItem("sef-players-v1", JSON.stringify(players));
+      Storage.set("sef-players-v1", players);
+      setBase("players", players);
+      renderBackground();
+    });
+  } else {
+    Storage.set("sef-players-v1", players);
+  }
+}
+function saveInfo(onResult) {
+  localStorage.setItem("sef-info-v1", JSON.stringify(info));
+  draft._dirty = false;
+  if (SYNC_URL && navigator.onLine) {
+    fetchRemoteValue("sef-info-v1").then(function (remote) {
+      info = mergeInfoDeep(remote, info);
+      localStorage.setItem("sef-info-v1", JSON.stringify(info));
+      Storage.set("sef-info-v1", info, onResult);
+      setBase("info", info);
+      renderBackground();
+    });
+  } else {
+    Storage.set("sef-info-v1", info, onResult);
+  }
+}
 function saveMatches() { Storage.set("sef-matches-v1", matches); }
-function getPlayerData(id) { return Storage.get("sef-pdata-" + id) || emptyPlayerData(); }
+// Toujours renvoyer une fiche complete : une fiche enregistree par une ancienne version de
+// l'application (ou incomplete) pouvait manquer d'un tableau et faire planter l'affichage.
+function getPlayerData(id) {
+  var d = Storage.get("sef-pdata-" + id);
+  if (!d || typeof d !== "object") return emptyPlayerData();
+  var e = emptyPlayerData();
+  Object.keys(e).forEach(function (k) { if (!Array.isArray(d[k])) d[k] = e[k]; });
+  return d;
+}
 function savePlayerData(id, data) { Storage.set("sef-pdata-" + id, data); draft._dirty = false; }
 
 function clubsFromPlayers() {
@@ -1503,10 +1606,7 @@ function resultBadge(v) {
 
 function tabSeance(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
-  if (!App.seanceDate) {
-    var lo = latestOf(pdata.objectifs);
-    App.seanceDate = lo ? lo.date : nearestTrainingDay(todayIso());
-  }
+  if (!App.seanceDate) App.seanceDate = nearestTrainingDay(todayIso());
   var seanceFilled = new Set();
   pdata.objectifs.forEach(function (e) { seanceFilled.add(e.date); });
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
@@ -1690,7 +1790,7 @@ function ouiNonPicker(name, label, value, disabled) {
 }
 function tabHooperJeudi(player, pdata, isAdmin, role) {
   var canEdit = isAdmin || role === "joueur";
-  if (!App.hooperJeudiDate) { var l = latestOf(pdata.ficheVendredi); App.hooperJeudiDate = l ? l.date : lastFriday(todayIso()); }
+  if (!App.hooperJeudiDate) App.hooperJeudiDate = currentWeekFriday();
   var current = mergeDuplicates(pdata.ficheVendredi, function (e) { return e.date === App.hooperJeudiDate; });
   var weekStart = mondayOf(App.hooperJeudiDate);
   var week = SCHOOL_WEEKS.find(function (w) { return w[0] === weekStart; }) || [weekStart, addDaysIso(weekStart, 6)];
@@ -1906,7 +2006,7 @@ function scale5(name, label, value, disabled) {
   return html + '</div></div>';
 }
 function tabHooperWeekend(player, pdata, isAdmin, role) {
-  if (!App.hooperWeekendDate) { var l = latestOf(pdata.hooperLundi); App.hooperWeekendDate = l ? l.date : lastSaturday(todayIso()); }
+  if (!App.hooperWeekendDate) App.hooperWeekendDate = lastSaturday(todayIso());
   var current = mergeDuplicates(pdata.hooperLundi, function (e) { return e.date === App.hooperWeekendDate; });
   var blank = { aJoueClub: "Oui", adversaireClub: "", scoreClub: "", dureeJeuClub: "", posteJoueClub: "", pointsForts: "", pointsFaibles: "", bienJoue: null, formePhysiqueWE: null, heureuxMatch: null, pretLundi: null, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
   if (!draft._hwInit || draft._hwDate !== App.hooperWeekendDate) { resetDraft(current || blank); draft._hwInit = true; draft._hwDate = App.hooperWeekendDate; }
@@ -2306,7 +2406,7 @@ function screenAdminDayDetail() {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
       var pdata = App.bulk.data[p.id];
-      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, dayDetailTargetTab(wd)) + '</div>';
+      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, dayDetailTargetTab(wd), true, iso) + '</div>';
       html += dayDetailContent(pdata, iso, wd);
       html += '</div>';
     });
@@ -2325,7 +2425,7 @@ function dayDetailContent(pdata, iso, wd) {
   var html = "";
   if (wd >= 1 && wd <= 4) {
     var obj = pdata.objectifs.find(function (e) { return e.date === iso; });
-    if (!obj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Ma séance : pas rempli.</div>';
+    if (!obj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Ma séance : pas rempli à cette date' + lastEntryHint(pdata.objectifs) + '.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Avant</b> — ' + esc(obj.theme || "(sans thème)") + ' · forme ' + fmtNote(obj.formePhysique, 10) + ', motivation ' + fmtNote(obj.motivation, 10) + '</div>' +
         '<div style="font-size:12px;color:#334036;margin-bottom:4px">Off ' + resultBadge(obj.resultatOffensif) + (obj.objOffensif ? ' : ' + esc(obj.objOffensif) : "") + ' · Def ' + resultBadge(obj.resultatDefensif) + (obj.objDefensif ? ' : ' + esc(obj.objDefensif) : "") + '</div>' +
@@ -2336,7 +2436,7 @@ function dayDetailContent(pdata, iso, wd) {
     var mon = mondayOf(iso);
     var sem = pdata.semaines.find(function (s) { return s.weekStart === mon; });
     var hj = pdata.ficheVendredi.find(function (e) { return e.date === iso; });
-    if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (vendredi, bilan de semaine) : pas rempli.</div>';
+    if (!hj) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper (vendredi, bilan de semaine) : pas rempli à cette date' + lastEntryHint(pdata.ficheVendredi) + '.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036">Sommeil ' + fmtNote(hj.sommeil, 10) + ' · Forme mentale ' + fmtNote(hj.formeMentale, 10) + ' · Forme physique ' + fmtNote(hj.formePhysique, 10) + ' · Confiance ' + fmtNote(hj.confiance, 10) + '</div>';
       if (hj.principeOffensif) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Principe offensif :</b> ' + esc(hj.principeOffensif) + '</div>';
@@ -2357,7 +2457,7 @@ function dayDetailContent(pdata, iso, wd) {
   }
   if (wd === 6) {
     var hw = pdata.hooperLundi.find(function (e) { return e.date === iso; });
-    if (!hw) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Hooper week-end : pas rempli.</div>';
+    if (!hw) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Match club (samedi) : pas rempli à cette date' + lastEntryHint(pdata.hooperLundi) + '.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036">A joué avec son club : ' + esc(hw.aJoueClub || "—") + (hw.dureeJeuClub ? ' (' + esc(hw.dureeJeuClub) + (hw.posteJoueClub ? ', ' + esc(hw.posteJoueClub) : '') + ')' : '') + '</div>';
       if (hw.pointsForts) html += '<div style="font-size:12px;color:#334036"><b>Points forts :</b> ' + esc(hw.pointsForts) + '</div>';
@@ -2392,7 +2492,8 @@ function screenAdminHome() {
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminPlanning\')">📅 Voir / modifier le planning</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminInfos\')">📋 Infos, documents, projet & charte</button><div style="height:10px"></div>';
   html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminImport\')">📥 Import en masse (joueurs, planning)</button><div style="height:10px"></div>';
-  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminTrombi\')">🪪 Trombinoscope (galerie photos)</button><div style="height:16px"></div>';
+  html += '<button class="btn btn-accent btn-block" onclick="nav(\'adminTrombi\')">🪪 Trombinoscope (galerie photos)</button><div style="height:10px"></div>';
+  html += '<button class="btn btn-ghost btn-block" onclick="nav(\'adminAccounts\')">🔍 Contrôle des comptes joueurs</button><div style="height:16px"></div>';
 
   html += '<input type="text" style="margin-bottom:14px" placeholder="Rechercher un joueur..." value="' + esc(App.search) + '" oninput="App.search=this.value; render()">';
   html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;color:var(--gris)">' +
@@ -2695,7 +2796,7 @@ function screenAdminBulkSemaine() {
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
       var pdata = App.bulk.data[p.id];
       var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
-      html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "hooperJeudi") + '</div>' +
+      html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "hooperJeudi", true, App.bulk.weekStart) + '</div>' +
         '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Joueur</div>' + bulkGrade(p.id, "perfJoueur", entry.perfJoueur) + '</div>' +
         '<div><div style="font-size:11px;color:var(--gris);margin-bottom:4px">Entraîneur</div>' + bulkGrade(p.id, "perfCoach", entry.perfCoach) + '</div></div></div>' +
@@ -2786,7 +2887,7 @@ function screenAdminBulkMatch() {
       players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
         var pdata = App.bulk.data[p.id];
         var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { commentMatch: "", dispositif: "", objectifMatch: "", objectifResultat: "", noteJoueur: null, commentaireProf: "", noteProf: null };
-        html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "matchSection") + '</div>';
+        html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "matchSection", true, App.bulk.matchId) + '</div>';
         if (entry.commentMatch || entry.dispositif) {
           html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#334036">' +
             (entry.dispositif ? '<div><b>Dispositif :</b> ' + esc(entry.dispositif) + '</div>' : "") +
@@ -2900,7 +3001,7 @@ function screenAdminBulkDate() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     visiblePlayers.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, App.bulk.dateType === "blessures" ? "medical" : App.bulk.dateType, !scoped) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
+      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, App.bulk.dateType === "blessures" ? "medical" : App.bulk.dateType, !scoped, App.bulk.date) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
     });
   });
   html += '</div>';
@@ -2955,7 +3056,7 @@ function renderBulkDateEntry(pdata, playerId) {
   function pick(list) { return mode === "latest" ? latestOf(list) : list.find(function (e) { return e.date === date; }); }
   if (type === "seance") {
     var obj = pick(pdata.objectifs);
-    if (!obj) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    if (!obj) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée à cette date' + lastEntryHint(pdata.objectifs) + '.</div>';
     return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(obj.date) + '</span> — <b>' + esc(obj.theme || "(sans thème)") + '</b>' +
       '<div style="margin-top:4px"><b>Objectif offensif</b> ' + resultBadge(obj.resultatOffensif) + (obj.objOffensif ? ' : ' + esc(obj.objOffensif) : ' — pas de détail écrit') + '</div>' +
       '<div><b>Objectif défensif</b> ' + resultBadge(obj.resultatDefensif) + (obj.objDefensif ? ' : ' + esc(obj.objDefensif) : ' — pas de détail écrit') + '</div>' +
@@ -2973,7 +3074,7 @@ function renderBulkDateEntry(pdata, playerId) {
     }
     var evalHtml = wk ? '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ddd"><div style="display:flex;gap:10px">' + gradeCell("Perf. (joueur)", wk.perfJoueur) + gradeCell("Perf. (coach)", wk.perfCoach) + gradeCell("Investiss. (joueur)", wk.investJoueur) + gradeCell("Investiss. (coach)", wk.investCoach) + '</div>' +
       (wk.commentaire ? '<div style="margin-top:4px;font-size:12px;color:#334036"><b>Commentaire :</b> ' + esc(wk.commentaire) + '</div>' : '') + '</div>' : '';
-    if (!e) return (evalHtml ? '<div style="font-size:12px;color:var(--gris);font-style:italic">Fiche du vendredi non remplie.</div>' + evalHtml : '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>');
+    if (!e) return (evalHtml ? '<div style="font-size:12px;color:var(--gris);font-style:italic">Fiche du vendredi non remplie à cette date' + lastEntryHint(pdata.ficheVendredi) + '.</div>' + evalHtml : '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>');
     return '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span>' +
       '<div style="margin-top:2px">Sommeil ' + fmtNoteAlert(e.sommeil, 10, false) + ' · Forme mentale ' + fmtNoteAlert(e.formeMentale, 10, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysique, 10, false) + ' · Confiance ' + fmtNoteAlert(e.confiance, 10, false) + '</div>' +
       (e.principeOffensif ? '<div style="margin-top:2px"><b>Principe offensif :</b> ' + esc(e.principeOffensif) + '</div>' : "") +
@@ -2986,7 +3087,7 @@ function renderBulkDateEntry(pdata, playerId) {
   }
   if (type === "hooperWeekend") {
     var e = pick(pdata.hooperLundi);
-    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée.</div>';
+    if (!e) return '<div style="font-size:12px;color:var(--gris);font-style:italic">Aucune donnée à cette date' + lastEntryHint(pdata.hooperLundi) + '.</div>';
     var html = '<div style="font-size:12px;color:#334036"><span style="font-size:11px;color:var(--gris)">' + fmtShort(e.date) + '</span><div>Score : <b>' + (e.score != null ? e.score + "/20" : "pas complet") + '</b></div>' +
       '<div style="margin-top:2px">Bien joué ' + fmtNoteAlert(e.bienJoue, 5, false) + ' · Forme physique ' + fmtNoteAlert(e.formePhysiqueWE, 5, false) + ' · Heureux du match ' + fmtNoteAlert(e.heureuxMatch, 5, false) + ' · Prêt lundi ' + fmtNoteAlert(e.pretLundi, 5, false) + '</div>' +
       (e.adversaireClub ? '<div style="margin-top:2px"><b>Contre :</b> ' + esc(e.adversaireClub) + (e.scoreClub ? ' (' + esc(e.scoreClub) + ')' : "") + '</div>' : "") +
@@ -3072,7 +3173,7 @@ function screenBulkClubMatch() {
     visiblePlayers.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
       var pdata = App.bulk.data[p.id];
       var entry = pdata.hooperLundi.find(function (e) { return e.date === date; });
-      html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "hooperWeekend", !scoped) + '</div>';
+      html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "hooperWeekend", !scoped, App.bulk.clubMatchDate) + '</div>';
       if (entry && (entry.adversaireClub || entry.pointsForts || entry.pointsFaibles || entry.bienJoue != null)) {
         html += '<div style="background:#f7f8f4;border-radius:8px;padding:8px;margin-bottom:8px;font-size:12px;color:#334036">' +
           (entry.adversaireClub ? '<div><b>Contre :</b> ' + esc(entry.adversaireClub) + (entry.scoreClub ? ' (' + esc(entry.scoreClub) + ')' : "") + '</div>' : "") +
@@ -3222,6 +3323,11 @@ function screenAdminImport() {
     '<button class="pill ' + (App.importSub === "joueurs" ? "active" : "") + '" style="flex:1" onclick="setImportSub(\'joueurs\')">Joueurs</button>' +
     '<button class="pill ' + (App.importSub === "planning" ? "active" : "") + '" style="flex:1" onclick="setImportSub(\'planning\')">Planning</button></div>';
 
+  if (App.importPreview) {
+    html += renderImportPreview() + '</div>';
+    return html;
+  }
+
   if (App.importSub === "joueurs") {
     html += '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">' +
       '<b>Format attendu</b> — colle directement une plage de cellules copiée depuis Excel ou Google Sheets (une ligne par joueur), colonnes dans cet ordre :<br>' +
@@ -3229,15 +3335,15 @@ function screenAdminImport() {
       'Les colonnes vides à la fin peuvent être omises. Un joueur déjà existant (même nom + prénom) est mis à jour, pas dupliqué.</div>';
     html += '<div class="card"><div class="field"><label>Colle ta liste ici</label>' +
       '<textarea id="import-joueurs-text" style="min-height:160px;font-family:monospace;font-size:12px" oninput="App.importText=this.value">' + esc(App.importText || "") + '</textarea></div>' +
-      '<button class="btn btn-accent btn-block" onclick="runImportJoueurs()">Importer</button></div>';
+      '<button class="btn btn-accent btn-block" onclick="previewImportJoueurs()">Voir l\'aperçu avant import</button></div>';
   } else {
     html += '<div class="card-gold" style="border-radius:10px;padding:12px;font-size:12px;color:#7A1420;margin-bottom:14px">' +
       '<b>Format attendu</b> — une ligne par événement, colonnes dans cet ordre :<br>' +
       '<code style="font-size:11px">Date (JJ/MM/AAAA ou AAAA-MM-JJ) · Heure (optionnelle, ex 18:00) · Thème de cycle (optionnel) · Événement (optionnel)</code><br>' +
-      'Une date déjà présente dans le planning est mise à jour, pas dupliquée.</div>';
+      'Une date déjà présente dans le planning est entièrement remplacée par la nouvelle ligne (y compris les champs laissés vides).</div>';
     html += '<div class="card"><div class="field"><label>Colle ton planning ici</label>' +
       '<textarea id="import-planning-text" style="min-height:160px;font-family:monospace;font-size:12px" oninput="App.importText=this.value">' + esc(App.importText || "") + '</textarea></div>' +
-      '<button class="btn btn-accent btn-block" onclick="runImportPlanning()">Importer</button></div>';
+      '<button class="btn btn-accent btn-block" onclick="previewImportPlanning()">Voir l\'aperçu avant import</button></div>';
   }
 
   if (App.importResult) {
@@ -3247,7 +3353,64 @@ function screenAdminImport() {
   html += '</div>';
   return html;
 }
-function setImportSub(s) { App.importSub = s; App.importText = ""; App.importResult = null; render(); }
+function setImportSub(s) { App.importSub = s; App.importText = ""; App.importResult = null; App.importPreview = null; render(); }
+
+function diffLine(label, oldV, newV) {
+  oldV = oldV || ""; newV = newV || "";
+  if (oldV === newV) return "";
+  return '<div style="font-size:12px;margin-top:2px"><b>' + label + '</b> : ' +
+    (oldV ? '<span style="color:#a33323;text-decoration:line-through">' + esc(oldV) + '</span> → ' : '(vide) → ') +
+    '<span style="color:#2b6b1f;font-weight:700">' + (newV ? esc(newV) : "(vide)") + '</span></div>';
+}
+function renderImportPreview() {
+  var p = App.importPreview;
+  var html = '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:4px">Aperçu avant import</div>' +
+    '<div style="font-size:12px;color:var(--gris);margin-bottom:10px">' + p.rows.length + ' ligne(s) sur ' + p.totalParsed + ' vont changer quelque chose' + (p.totalParsed - p.rows.length > 0 ? " (" + (p.totalParsed - p.rows.length) + " identique(s), ignorée(s))" : "") + '. Vérifie avant de confirmer.</div>';
+  if (p.rows.length === 0) html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Rien à changer — les données collées correspondent déjà à ce qui est enregistré.</div>';
+  p.rows.slice(0, 60).forEach(function (r) {
+    html += '<div style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--noir)">' + esc(r.title) + (r.isNew ? ' <span style="color:#2b6b1f">· nouveau</span>' : '') + '</div>' + r.diffs.join("") + '</div>';
+  });
+  if (p.rows.length > 60) html += '<div style="font-size:12px;color:var(--gris);margin-top:8px">+ ' + (p.rows.length - 60) + ' autre(s) ligne(s)...</div>';
+  html += '<div class="row" style="margin-top:14px">' +
+    '<button class="btn btn-ghost" onclick="App.importPreview=null; render()">Modifier le texte</button>' +
+    '<button class="btn btn-accent" onclick="confirmImportPreview()" ' + (p.rows.length === 0 ? "disabled" : "") + '>Confirmer et importer</button></div></div>';
+  return html;
+}
+function previewImportPlanning() {
+  var rows = parsePastedRows(App.importText || "");
+  var preview = [];
+  rows.forEach(function (cols) {
+    var date = parseFlexDate(cols[0] || "");
+    if (!date) return;
+    var heure = (cols[1] || "").trim(), theme = (cols[2] || "").trim(), evenement = (cols[3] || "").trim();
+    var existing = info.programmation.find(function (e) { return e.date === date; });
+    var diffs = [diffLine("Heure", existing && existing.heure, heure), diffLine("Thème", existing && existing.theme, theme), diffLine("Événement", existing && existing.evenement, evenement)].filter(Boolean);
+    if (diffs.length) preview.push({ title: fmtShort(date), isNew: !existing, diffs: diffs });
+  });
+  App.importPreview = { type: "planning", rows: preview, totalParsed: rows.length };
+  render();
+}
+function previewImportJoueurs() {
+  var rows = parsePastedRows(App.importText || "");
+  var preview = [];
+  var labels = { groupe: "Groupe", classe: "Classe", poste: "Poste", club: "Club", entraineur: "Entraîneur", telEntraineur: "Tél. entraîneur", telPerso: "Tél. perso", telParents: "Tél. parents", email: "Email", dateNaissance: "Date de naissance" };
+  rows.forEach(function (cols) {
+    var nom = (cols[0] || "").trim(), prenom = (cols[1] || "").trim();
+    if (!nom || !prenom) return;
+    var vals = { groupe: (cols[2] || "").trim(), classe: (cols[3] || "").trim(), poste: (cols[4] || "").trim(), club: (cols[5] || "").trim(), entraineur: (cols[6] || "").trim(), telEntraineur: (cols[7] || "").trim(), telPerso: (cols[8] || "").trim(), telParents: (cols[9] || "").trim(), email: (cols[10] || "").trim(), dateNaissance: parseFlexDate(cols[11] || "") };
+    var existing = players.find(function (pl) { return pl.nom.toLowerCase() === nom.toLowerCase() && pl.prenom.toLowerCase() === prenom.toLowerCase(); });
+    var diffs = Object.keys(vals).map(function (k) { return vals[k] ? diffLine(labels[k], existing && existing[k], vals[k]) : ""; }).filter(Boolean);
+    if (diffs.length) preview.push({ title: prenom + " " + nom, isNew: !existing, diffs: diffs });
+  });
+  App.importPreview = { type: "joueurs", rows: preview, totalParsed: rows.length };
+  render();
+}
+function confirmImportPreview() {
+  var type = App.importPreview.type;
+  App.importPreview = null;
+  if (type === "planning") runImportPlanning(); else runImportJoueurs();
+}
 
 function runImportJoueurs() {
   var rows = parsePastedRows(App.importText || "");
@@ -3373,6 +3536,9 @@ function trySubmitCode(entered) {
     App.error = "";
     App.roleChoice = "joueur";
     App.activePlayerId = player.id;
+    App.previewAs = null;
+    resetPlayerContext();
+    resetDraft({});
     nav("player");
     return true;
   }
@@ -3432,6 +3598,155 @@ function submitAdminLogin() {
   render();
 }
 
+
+/* ============ CONTROLE DES COMPTES JOUEURS ============ */
+function normName(str) { return (str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, ""); }
+function levenshtein(a, b) {
+  var m = a.length, n = b.length, d = [], i, j;
+  for (i = 0; i <= m; i++) { d[i] = [i]; }
+  for (j = 1; j <= n; j++) d[0][j] = j;
+  for (i = 1; i <= m; i++) for (j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+var PD_LISTS = ["objectifs", "ficheVendredi", "hooperLundi", "semaines", "bilans", "tests", "mesures", "blessures"];
+function pdataCounts(pd) {
+  return { seances: pd.objectifs.length, vendredis: pd.ficheVendredi.length, samedis: pd.hooperLundi.length, semaines: pd.semaines.length, matchs: pd.bilans.length };
+}
+function pdataTotal(pd) { return PD_LISTS.reduce(function (t, k) { return t + (pd[k] || []).length; }, 0); }
+// Fusionne deux fiches de donnees : les valeurs de "target" sont prioritaires, celles de "source" completent.
+function mergePdata(target, source) {
+  var keyOf = { objectifs: "date", ficheVendredi: "date", hooperLundi: "date", semaines: "weekStart", bilans: "matchId" };
+  var out = emptyPlayerData();
+  Object.keys(out).forEach(function (k) {
+    var kn = keyOf[k] || "id", map = {}, order = [];
+    (target[k] || []).concat(source[k] || []).forEach(function (e) {
+      var key = e[kn] != null ? e[kn] : e.id;
+      if (!(key in map)) { order.push(key); map[key] = Object.assign({}, e); }
+      else Object.keys(e).forEach(function (f) { var m = map[key]; if ((m[f] === "" || m[f] == null) && e[f] !== "" && e[f] != null) m[f] = e[f]; });
+    });
+    out[k] = order.map(function (key) { return map[key]; });
+  });
+  return out;
+}
+function orphanPdataKeys() {
+  var ids = {}, res = [];
+  players.forEach(function (p) { ids[p.id] = true; });
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && k.indexOf("sef-pdata-") === 0) {
+      var id = k.slice("sef-pdata-".length);
+      if (!ids[id]) { var pd = getPlayerData(id); if (pdataTotal(pd) > 0) res.push({ id: id, pd: pd }); }
+    }
+  }
+  return res;
+}
+function uniqueCode(prenom) {
+  var used = {};
+  players.forEach(function (p) { used[(p.code || "").toUpperCase()] = true; });
+  Object.keys(info.clubCodes || {}).forEach(function (c) { used[(info.clubCodes[c] || "").toUpperCase()] = true; });
+  (info.specialStaff || []).forEach(function (x) { used[(x.code || "").toUpperCase()] = true; });
+  var c, guard = 0;
+  do { c = generateCode(prenom); guard++; } while (used[c.toUpperCase()] && guard < 50);
+  return c;
+}
+function regeneratePlayerCode(id) {
+  var p = players.find(function (x) { return x.id === id; });
+  if (!p) return;
+  if (!confirm("Créer un nouveau code pour " + p.prenom + " " + p.nom + " ? L'ancien code ne fonctionnera plus : il faudra donner le nouveau code au joueur.")) return;
+  p.code = uniqueCode(p.prenom);
+  savePlayers();
+  App.accountMsg = "✅ Nouveau code de " + p.prenom + " " + p.nom + " : " + p.code;
+  render();
+}
+function mergePlayerInto(targetId, sourceId) {
+  var tp = players.find(function (x) { return x.id === targetId; }), sp = players.find(function (x) { return x.id === sourceId; });
+  if (!tp || !sp) return;
+  if (!confirm("Fusionner la fiche « " + sp.prenom + " " + sp.nom + " » (code " + sp.code + ") dans « " + tp.prenom + " " + tp.nom + " » (code " + tp.code + ") ? Toutes les données sont conservées ; la fiche en double disparaît. Seul le code " + tp.code + " continuera de fonctionner.")) return;
+  savePlayerData(targetId, mergePdata(getPlayerData(targetId), getPlayerData(sourceId)));
+  Object.keys(sp).forEach(function (k) { if (k !== "id" && k !== "code" && (tp[k] === "" || tp[k] == null) && sp[k]) tp[k] = sp[k]; });
+  players = players.filter(function (x) { return x.id !== sourceId; });
+  savePlayers();
+  savePlayerData(sourceId, emptyPlayerData());
+  App.accountMsg = "✅ Fiches fusionnées. Code à utiliser pour " + tp.prenom + " " + tp.nom + " : " + tp.code;
+  render();
+}
+function attachOrphanData(orphanId, selectId) {
+  var sel = document.getElementById(selectId);
+  var targetId = sel && sel.value;
+  if (!targetId) { App.accountMsg = "Choisis d'abord le joueur auquel rattacher ces données."; render(); return; }
+  var tp = players.find(function (x) { return x.id === targetId; });
+  if (!confirm("Rattacher ces données à " + tp.prenom + " " + tp.nom + " ?")) return;
+  savePlayerData(targetId, mergePdata(getPlayerData(targetId), getPlayerData(orphanId)));
+  savePlayerData(orphanId, emptyPlayerData());
+  App.accountMsg = "✅ Données rattachées à " + tp.prenom + " " + tp.nom + ".";
+  render();
+}
+function lastDateOf(list) { var l = latestOf(list || []); return l && l.date ? fmtShort(l.date) : "—"; }
+function screenAdminAccounts() {
+  var html = '<div class="header"><div><div class="title">Contrôle des comptes</div><div class="sub">Doublons, codes, données orphelines</div></div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
+    '<div style="flex:1;padding:14px;background:var(--bg);overflow-y:auto">';
+  if (App.accountMsg) html += '<div class="card" style="border:2px solid #2b6b1f;font-weight:700;color:#2b6b1f;font-size:13px">' + esc(App.accountMsg) + '</div>';
+  var data = {};
+  players.forEach(function (p) { data[p.id] = getPlayerData(p.id); });
+
+  // 1) Codes en double
+  var byCode = {};
+  players.forEach(function (p) { var c = (p.code || "").toUpperCase(); (byCode[c] = byCode[c] || []).push(p); });
+  var dupCodes = Object.keys(byCode).filter(function (c) { return byCode[c].length > 1; });
+  // 2) Fiches en double ou tres ressemblantes
+  var groups = [], used = {};
+  players.forEach(function (a, i) {
+    if (used[a.id]) return;
+    var grp = [a], na = normName(a.prenom + a.nom);
+    players.forEach(function (b, j) { if (j > i && !used[b.id] && (normName(b.prenom + b.nom) === na || levenshtein(normName(b.prenom + b.nom), na) <= 2)) grp.push(b); });
+    if (grp.length > 1) { grp.forEach(function (x) { used[x.id] = true; }); groups.push(grp); }
+  });
+  // 3) Donnees sans joueur
+  var orphans = orphanPdataKeys();
+
+  var problems = dupCodes.length + groups.length + orphans.length;
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:6px">' + (problems ? "⚠️ " + problems + " point(s) à vérifier" : "✅ Aucun problème détecté") + '</div>' +
+    '<div style="font-size:12px;color:var(--gris)">' + players.length + ' joueurs · ' + dupCodes.length + ' code(s) en double · ' + groups.length + ' fiche(s) en double possible(s) · ' + orphans.length + ' jeu(x) de données sans joueur.</div></div>';
+
+  dupCodes.forEach(function (c) {
+    html += '<div class="card" style="border:2px solid #B3412E"><div style="font-weight:800;color:#B3412E;margin-bottom:6px">Code en double : ' + esc(c) + '</div>' +
+      '<div style="font-size:12px;color:#334036;margin-bottom:8px">Ce code ouvre toujours la fiche du premier joueur : les saisies de l\'autre joueur vont au mauvais endroit. Donne un nouveau code à l\'un des deux.</div>' +
+      byCode[c].map(function (p) { return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span>' + esc(p.prenom + " " + p.nom) + '</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="regeneratePlayerCode(\'' + p.id + '\')">Nouveau code</button></div>'; }).join("") + '</div>';
+  });
+
+  groups.forEach(function (grp) {
+    html += '<div class="card" style="border:2px solid #8a5a10"><div style="font-weight:800;color:#8a5a10;margin-bottom:6px">Fiches qui se ressemblent</div>' +
+      '<div style="font-size:12px;color:#334036;margin-bottom:8px">Si c\'est bien la même personne, garde la fiche qui a le plus de données (ou celle dont le joueur utilise le code) et fusionne l\'autre dedans : rien n\'est perdu.</div>';
+    grp.forEach(function (p) {
+      var c = pdataCounts(data[p.id]);
+      html += '<div style="border-top:1px solid #eee;padding:8px 0"><div style="font-weight:700">' + esc(p.prenom + " " + p.nom) + ' <span style="font-weight:400;color:var(--gris)">· code ' + esc(p.code) + ' · ' + esc(p.groupe || "") + '</span></div>' +
+        '<div style="font-size:12px;color:#334036">' + c.seances + ' séance(s) · ' + c.vendredis + ' vendredi(s) · ' + c.samedis + ' samedi(s) · ' + c.semaines + ' semaine(s) · ' + c.matchs + ' match(s)</div>' +
+        grp.filter(function (o) { return o.id !== p.id; }).map(function (o) { return '<button class="btn btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="mergePlayerInto(\'' + p.id + '\',\'' + o.id + '\')">Garder celle-ci · fusionner « ' + esc(o.prenom + " " + o.nom) + ' » dedans</button>'; }).join(" ") + '</div>';
+    });
+    html += '</div>';
+  });
+
+  orphans.forEach(function (o, idx) {
+    var c = pdataCounts(o.pd), selId = "orphan-sel-" + idx;
+    html += '<div class="card" style="border:2px solid #B3412E"><div style="font-weight:800;color:#B3412E;margin-bottom:6px">Données sans joueur</div>' +
+      '<div style="font-size:12px;color:#334036;margin-bottom:8px">' + c.seances + ' séance(s) · ' + c.vendredis + ' vendredi(s) · ' + c.samedis + ' samedi(s) · ' + c.semaines + ' semaine(s) · ' + c.matchs + ' match(s). Ces saisies existent mais ne sont rattachées à aucune fiche visible.</div>' +
+      '<select id="' + selId + '" style="width:100%;margin-bottom:8px"><option value="">Rattacher à…</option>' + players.slice().sort(byNomPrenom).map(function (p) { return '<option value="' + p.id + '">' + esc(p.prenom + " " + p.nom) + '</option>'; }).join("") + '</select>' +
+      '<button class="btn btn-accent btn-block" onclick="attachOrphanData(\'' + o.id + '\',\'' + selId + '\')">Rattacher ces données</button></div>';
+  });
+
+  // Tableau de tous les joueurs
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:8px">Tous les joueurs</div>';
+  players.slice().sort(function (a, b) { return (a.groupe || "").localeCompare(b.groupe || "") || byNomPrenom(a, b); }).forEach(function (p) {
+    var pd = data[p.id], c = pdataCounts(pd);
+    html += '<div style="border-top:1px solid #eee;padding:8px 0"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">' + esc(p.prenom + " " + p.nom) + ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.code) + '</span></div>' +
+      '<button class="btn btn-ghost" style="padding:3px 9px;font-size:11px" onclick="regeneratePlayerCode(\'' + p.id + '\')">Nouveau code</button></div>' +
+      '<div style="font-size:11px;color:#334036">' + c.seances + ' séance(s), dernière ' + lastDateOf(pd.objectifs) + ' · ' + c.vendredis + ' vendredi(s), dernier ' + lastDateOf(pd.ficheVendredi) + ' · ' + c.samedis + ' samedi(s), dernier ' + lastDateOf(pd.hooperLundi) + ' · ' + c.matchs + ' match(s)</div></div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
 /* ============ RENDER PRINCIPAL ============ */
 function render() {
   var body;
@@ -3444,6 +3759,7 @@ function render() {
     case "specialStaffHome": body = screenSpecialStaffHome(); break;
     case "adminHome": body = screenAdminHome(); break;
     case "adminTrombi": body = screenTrombi(true); break;
+    case "adminAccounts": body = screenAdminAccounts(); break;
     case "trombi": body = screenTrombi(false); break;
     case "adminPlanning": body = screenAdminPlanning(); break;
     case "planningScoped": body = screenPlanningScoped(); break;
@@ -3467,7 +3783,36 @@ function render() {
   } else if (syncQueue.length > 0) {
     banner = '<div class="sync-banner" id="sync-badge">⏳ ' + syncQueue.length + ' en attente d\'envoi</div>';
   }
-  document.getElementById("shell").innerHTML = banner + body;
+  var shell = document.getElementById("shell");
+  // Conserve le champ en cours de saisie (focus + curseur) quand l'ecran est redessine
+  var a = document.activeElement, keep = null;
+  if (a && shell.contains(a) && a.id && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) {
+    keep = { id: a.id, s: a.selectionStart, e: a.selectionEnd, st: a.scrollTop };
+  }
+  shell.innerHTML = banner + body;
+  if (keep) {
+    var el = document.getElementById(keep.id);
+    if (el) {
+      el.focus();
+      try { if (keep.s != null) el.setSelectionRange(keep.s, keep.e); } catch (err) {}
+      el.scrollTop = keep.st;
+    }
+  }
+}
+// Vrai quand la personne est en train de taper dans un champ de l'ecran.
+function isTypingInField() {
+  var a = document.activeElement, shell = document.getElementById("shell");
+  if (!a || !shell || !shell.contains(a)) return false;
+  if (a.tagName === "TEXTAREA") return true;
+  return a.tagName === "INPUT" && ["checkbox", "radio", "button", "submit", "file"].indexOf(a.type) === -1;
+}
+// Rafraichissement declenche par la synchro (pas par une action de la personne) : on ne
+// redessine JAMAIS l'ecran pendant la saisie, sinon le champ perd le focus toutes les
+// quelques secondes. Les donnees sont deja a jour en memoire et seront affichees au prochain
+// affichage.
+function renderBackground() {
+  if (isTypingInField()) return;
+  render();
 }
 
 /* ============ PLAYER HOME (fiche joueur, tous rôles) ============ */
@@ -3483,10 +3828,26 @@ var PH_TABS = [
   { key: "tests", label: "Tests", icon: "⏱️" },
 ];
 
-function openPlayer(playerId, adminFlag, targetTab) {
+// Remet a zero tout ce qui est "selectionne" dans les onglets (date, match, formulaires ouverts) :
+// ces reglages sont globaux, donc sans cela le joueur suivant heritait de la date/du match du
+// joueur precedent et ses propres saisies n'apparaissaient pas.
+function resetPlayerContext() {
+  App.seanceDate = null; App.hooperJeudiDate = null; App.hooperWeekendDate = null; App.matchSelectedId = null;
+  App.seanceCalMonth = null; App.hjCalMonth = null; App.hwCalMonth = null;
+  App.identiteEdit = false; App.mesShowAdd = false; App.semShowAdd = false; App.testShowAdd = false;
+}
+// ctx (optionnel) : date consultee (JJ) ou identifiant de match, pour ouvrir la fiche sur ce jour-la.
+function openPlayer(playerId, adminFlag, targetTab, ctx) {
   App.activePlayerId = playerId;
   App.tab = targetTab || "identite";
   App.previewAs = null;
+  resetPlayerContext();
+  if (ctx) {
+    if (App.tab === "seance") App.seanceDate = ctx;
+    else if (App.tab === "hooperJeudi") App.hooperJeudiDate = addDaysIso(mondayOf(ctx), 4);
+    else if (App.tab === "hooperWeekend") App.hooperWeekendDate = addDaysIso(mondayOf(ctx), 5);
+    else if (App.tab === "matchSection") App.matchSelectedId = ctx;
+  }
   resetDraft({});
   nav(adminFlag ? "adminPlayer" : "player");
 }
