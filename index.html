@@ -1044,9 +1044,20 @@ function autoSaveIfDirty() {
 function normalizeNameKey(s) {
   return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 }
+// La photo est rattachee au nom du joueur. Si l'orthographe du nom est corrigee (ex. LELEIEVRE ->
+// LELIEVRE), la photo doit suivre : a defaut de nom exact, on cherche la photo du meme prenom
+// dont le nom ne differe que de 1 ou 2 lettres.
 function getPlayerPhoto(player) {
   var key = normalizeNameKey(player.nom) + "_" + normalizeNameKey(player.prenom);
-  return PLAYER_PHOTOS[key] || null;
+  if (PLAYER_PHOTOS[key]) return PLAYER_PHOTOS[key];
+  var pn = normName(player.prenom), nn = normName(player.nom), best = null, bestD = 99;
+  Object.keys(PLAYER_PHOTOS).forEach(function (k) {
+    var i = k.lastIndexOf("_");
+    if (normName(k.slice(i + 1)) !== pn) return;
+    var dist = levenshtein(normName(k.slice(0, i)), nn);
+    if (dist <= 2 && dist < bestD) { bestD = dist; best = PLAYER_PHOTOS[k]; }
+  });
+  return best;
 }
 function tabIdentite(player, isAdmin, role, pdata) {
   var canEdit = isAdmin || role === "joueur";
@@ -3610,10 +3621,35 @@ function levenshtein(a, b) {
   return d[m][n];
 }
 var PD_LISTS = ["objectifs", "ficheVendredi", "hooperLundi", "semaines", "bilans", "tests", "mesures", "blessures"];
-function pdataCounts(pd) {
-  return { seances: pd.objectifs.length, vendredis: pd.ficheVendredi.length, samedis: pd.hooperLundi.length, semaines: pd.semaines.length, matchs: pd.bilans.length };
+function realSemaines(pd) {
+  return (pd.semaines || []).filter(function (x) { return x.perfJoueur || x.perfCoach || x.investJoueur || x.investCoach || x.commentaire; });
 }
-function pdataTotal(pd) { return PD_LISTS.reduce(function (t, k) { return t + (pd[k] || []).length; }, 0); }
+function realList(pd, k) { return k === "semaines" ? realSemaines(pd) : (pd[k] || []); }
+function pdataCounts(pd) {
+  return { seances: pd.objectifs.length, vendredis: pd.ficheVendredi.length, samedis: pd.hooperLundi.length, semaines: realSemaines(pd).length, matchs: pd.bilans.length };
+}
+var PD_LABELS = [["objectifs", "séance", "séances"], ["ficheVendredi", "vendredi", "vendredis"], ["hooperLundi", "samedi", "samedis"], ["semaines", "évaluation de semaine", "évaluations de semaine"], ["bilans", "match de section", "matchs de section"], ["tests", "session de tests", "sessions de tests"], ["mesures", "mesure", "mesures"], ["blessures", "blessure", "blessures"], ["ressenti", "ressenti", "ressentis"], ["semestriels", "évaluation semestrielle", "évaluations semestrielles"]];
+// Toutes les categories de saisies (pas seulement 5), pour ne jamais afficher "0" a tort.
+function pdataSummary(pd) {
+  var parts = [];
+  PD_LABELS.forEach(function (x) { var n = realList(pd, x[0]).length; if (n) parts.push(n + " " + (n > 1 ? x[2] : x[1])); });
+  return parts.length ? parts.join(" · ") : "aucune saisie";
+}
+// Dernier texte ecrit par le joueur (avec sa date) : permet de reconnaitre a qui appartiennent des saisies.
+function pdataSample(pd) {
+  var cands = [];
+  function add(list, f) { (list || []).forEach(function (e) { var t = f(e); if (t) cands.push({ date: e.date || e.weekStart || "", text: t }); }); }
+  add(pd.objectifs, function (e) { return e.theme || e.objOffensif || e.objDefensif; });
+  add(pd.ficheVendredi, function (e) { return e.pointsForts || e.infosEntraineur || e.principeOffensif; });
+  add(pd.hooperLundi, function (e) { return e.adversaireClub || e.pointsForts || e.resumeMatchCoach; });
+  add(pd.bilans, function (e) { return e.commentMatch; });
+  if (!cands.length) return "";
+  cands.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  var c = cands[0], t = String(c.text);
+  if (t.length > 80) t = t.slice(0, 80) + "…";
+  return (c.date ? fmtShort(c.date) + " : " : "") + "« " + t + " »";
+}
+function pdataTotal(pd) { return PD_LISTS.reduce(function (t, k) { return t + realList(pd, k).length; }, 0); }
 // Fusionne deux fiches de donnees : les valeurs de "target" sont prioritaires, celles de "source" completent.
 function mergePdata(target, source) {
   var keyOf = { objectifs: "date", ficheVendredi: "date", hooperLundi: "date", semaines: "weekStart", bilans: "matchId" };
@@ -3682,6 +3718,24 @@ function attachOrphanData(orphanId, selectId) {
   App.accountMsg = "✅ Données rattachées à " + tp.prenom + " " + tp.nom + ".";
   render();
 }
+function lookupCode(entered) {
+  var u = (entered || "").trim().toUpperCase();
+  if (!u) return "Tape d'abord un code.";
+  var pl = players.filter(function (p) { return (p.code || "").toUpperCase() === u; });
+  if (pl.length) return "Ce code ouvre la fiche : " + pl.map(function (p) { return p.prenom + " " + p.nom + " (" + (p.groupe || "") + (p.club ? ", " + p.club : "") + ")"; }).join("  ET  ") + (pl.length > 1 ? " — ATTENTION : code en double !" : ".");
+  var club = Object.keys(info.clubCodes || {}).find(function (c) { return (info.clubCodes[c] || "").toUpperCase() === u; });
+  if (club) return "Ce code est celui de l'éducateur du club « " + club + " » (pas celui d'un joueur).";
+  var st = (info.specialStaff || []).find(function (x) { return (x.code || "").toUpperCase() === u; });
+  if (st) return "Ce code est celui de l'encadrant « " + st.nom + " ».";
+  if (u === (info.adminCode || "").toUpperCase()) return "Ce code est ton code administrateur.";
+  return "Aucun compte ne correspond à ce code : le joueur verrait « Code non reconnu ».";
+}
+function checkCode() {
+  var el = document.getElementById("code-check-input");
+  App.codeCheckValue = el ? el.value : "";
+  App.codeCheckResult = lookupCode(App.codeCheckValue);
+  render();
+}
 function lastDateOf(list) { var l = latestOf(list || []); return l && l.date ? fmtShort(l.date) : "—"; }
 function screenAdminAccounts() {
   var html = '<div class="header"><div><div class="title">Contrôle des comptes</div><div class="sub">Doublons, codes, données orphelines</div></div><button class="btn-header" onclick="nav(\'adminHome\')">Retour</button></div>' +
@@ -3689,6 +3743,11 @@ function screenAdminAccounts() {
   if (App.accountMsg) html += '<div class="card" style="border:2px solid #2b6b1f;font-weight:700;color:#2b6b1f;font-size:13px">' + esc(App.accountMsg) + '</div>';
   var data = {};
   players.forEach(function (p) { data[p.id] = getPlayerData(p.id); });
+  html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:4px">Vérifier un code</div>' +
+    '<div style="font-size:12px;color:var(--gris);margin-bottom:8px">Tape le code que tu as donné à un joueur : l\'application te dit à quelle fiche il correspond.</div>' +
+    '<div style="display:flex;gap:8px"><input id="code-check-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:1" placeholder="Ex : Noe4522" value="' + esc(App.codeCheckValue || "") + '">' +
+    '<button class="btn btn-accent" onclick="checkCode()">Vérifier</button></div>' +
+    (App.codeCheckResult ? '<div style="margin-top:8px;font-size:13px;font-weight:700;color:#334036;background:#f7f8f4;border-radius:8px;padding:8px">' + esc(App.codeCheckResult) + '</div>' : '') + '</div>';
 
   // 1) Codes en double
   var byCode = {};
@@ -3719,18 +3778,19 @@ function screenAdminAccounts() {
     html += '<div class="card" style="border:2px solid #8a5a10"><div style="font-weight:800;color:#8a5a10;margin-bottom:6px">Fiches qui se ressemblent</div>' +
       '<div style="font-size:12px;color:#334036;margin-bottom:8px">Si c\'est bien la même personne, garde la fiche qui a le plus de données (ou celle dont le joueur utilise le code) et fusionne l\'autre dedans : rien n\'est perdu.</div>';
     grp.forEach(function (p) {
-      var c = pdataCounts(data[p.id]);
+      var sm = pdataSample(data[p.id]);
       html += '<div style="border-top:1px solid #eee;padding:8px 0"><div style="font-weight:700">' + esc(p.prenom + " " + p.nom) + ' <span style="font-weight:400;color:var(--gris)">· code ' + esc(p.code) + ' · ' + esc(p.groupe || "") + '</span></div>' +
-        '<div style="font-size:12px;color:#334036">' + c.seances + ' séance(s) · ' + c.vendredis + ' vendredi(s) · ' + c.samedis + ' samedi(s) · ' + c.semaines + ' semaine(s) · ' + c.matchs + ' match(s)</div>' +
+        '<div style="font-size:12px;color:#334036">' + esc(pdataSummary(data[p.id])) + '</div>' + (sm ? '<div style="font-size:11px;color:var(--gris)">Dernier texte : ' + esc(sm) + '</div>' : '') +
         grp.filter(function (o) { return o.id !== p.id; }).map(function (o) { return '<button class="btn btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="mergePlayerInto(\'' + p.id + '\',\'' + o.id + '\')">Garder celle-ci · fusionner « ' + esc(o.prenom + " " + o.nom) + ' » dedans</button>'; }).join(" ") + '</div>';
     });
     html += '</div>';
   });
 
   orphans.forEach(function (o, idx) {
-    var c = pdataCounts(o.pd), selId = "orphan-sel-" + idx;
+    var selId = "orphan-sel-" + idx, smp = pdataSample(o.pd);
     html += '<div class="card" style="border:2px solid #B3412E"><div style="font-weight:800;color:#B3412E;margin-bottom:6px">Données sans joueur</div>' +
-      '<div style="font-size:12px;color:#334036;margin-bottom:8px">' + c.seances + ' séance(s) · ' + c.vendredis + ' vendredi(s) · ' + c.samedis + ' samedi(s) · ' + c.semaines + ' semaine(s) · ' + c.matchs + ' match(s). Ces saisies existent mais ne sont rattachées à aucune fiche visible.</div>' +
+      '<div style="font-size:12px;color:#334036;margin-bottom:4px"><b>Contenu :</b> ' + esc(pdataSummary(o.pd)) + '. Ces saisies existent mais ne sont rattachées à aucune fiche visible.</div>' +
+      (smp ? '<div style="font-size:12px;color:#334036;margin-bottom:8px"><b>Dernier texte écrit :</b> ' + esc(smp) + '</div>' : '<div style="margin-bottom:8px"></div>') +
       '<select id="' + selId + '" style="width:100%;margin-bottom:8px"><option value="">Rattacher à…</option>' + players.slice().sort(byNomPrenom).map(function (p) { return '<option value="' + p.id + '">' + esc(p.prenom + " " + p.nom) + '</option>'; }).join("") + '</select>' +
       '<button class="btn btn-accent btn-block" onclick="attachOrphanData(\'' + o.id + '\',\'' + selId + '\')">Rattacher ces données</button></div>';
   });
@@ -3738,10 +3798,13 @@ function screenAdminAccounts() {
   // Tableau de tous les joueurs
   html += '<div class="card"><div style="font-weight:800;color:var(--noir);margin-bottom:8px">Tous les joueurs</div>';
   players.slice().sort(function (a, b) { return (a.groupe || "").localeCompare(b.groupe || "") || byNomPrenom(a, b); }).forEach(function (p) {
-    var pd = data[p.id], c = pdataCounts(pd);
-    html += '<div style="border-top:1px solid #eee;padding:8px 0"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">' + esc(p.prenom + " " + p.nom) + ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.code) + '</span></div>' +
+    var pd = data[p.id], c = pdataCounts(pd), sm = pdataSample(pd);
+    var prefix = (p.code || "").replace(/[0-9]/g, "");
+    var odd = normName(prefix) !== normName(p.prenom);
+    html += '<div style="border-top:1px solid #eee;padding:8px 0"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">' + clickableName(p, "seance") + ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.code) + '</span>' + (odd ? ' <span style="color:#8a5a10;font-weight:700;font-size:11px">⚠️ code inhabituel</span>' : '') + '</div>' +
       '<button class="btn btn-ghost" style="padding:3px 9px;font-size:11px" onclick="regeneratePlayerCode(\'' + p.id + '\')">Nouveau code</button></div>' +
-      '<div style="font-size:11px;color:#334036">' + c.seances + ' séance(s), dernière ' + lastDateOf(pd.objectifs) + ' · ' + c.vendredis + ' vendredi(s), dernier ' + lastDateOf(pd.ficheVendredi) + ' · ' + c.samedis + ' samedi(s), dernier ' + lastDateOf(pd.hooperLundi) + ' · ' + c.matchs + ' match(s)</div></div>';
+      '<div style="font-size:11px;color:#334036">' + esc(pdataSummary(pd)) + (c.seances ? ' · dernière séance ' + lastDateOf(pd.objectifs) : '') + (c.vendredis ? ' · dernier vendredi ' + lastDateOf(pd.ficheVendredi) : '') + (c.samedis ? ' · dernier samedi ' + lastDateOf(pd.hooperLundi) : '') + '</div>' +
+      (sm ? '<div style="font-size:11px;color:var(--gris)">Dernier texte : ' + esc(sm) + '</div>' : '') + '</div>';
   });
   html += '</div></div>';
   return html;
