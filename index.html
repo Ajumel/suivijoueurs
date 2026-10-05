@@ -342,6 +342,7 @@ function pullAllFromRemote() {
           localStorage.setItem(k, JSON.stringify(data.all[k]));
           if (k === "sef-info-v1") setBase("info", data.all[k]);
           if (k === "sef-players-v1") setBase("players", data.all[k]);
+          if (k.indexOf("sef-pdata-") === 0) setBase("pdata-" + k.slice("sef-pdata-".length), data.all[k]);
           changed = true;
         }
       });
@@ -924,7 +925,39 @@ function getPlayerData(id) {
   Object.keys(e).forEach(function (k) { if (!Array.isArray(d[k])) d[k] = e[k]; });
   return d;
 }
-function savePlayerData(id, data) { Storage.set("sef-pdata-" + id, data); draft._dirty = false; }
+// Cle de fusion par liste : la "date" identifie une seance/un vendredi/un samedi, "weekStart"
+// une semaine, "matchId" un bilan de match. Les autres listes (tests, mesures, blessures...) sont
+// fusionnees par id.
+var PDATA_KEY_OF = { objectifs: "date", ficheVendredi: "date", hooperLundi: "date", semaines: "weekStart", bilans: "matchId" };
+function mergePdataDeep(remote, local, base) {
+  if (!remote) return local;
+  var out = {};
+  Object.keys(emptyPlayerData()).forEach(function (k) {
+    var keyFn = PDATA_KEY_OF[k] ? function (e) { return e[PDATA_KEY_OF[k]]; } : function (e) { return e.id; };
+    out[k] = merge3Array(base ? base[k] : null, local[k], remote[k], keyFn);
+  });
+  return out;
+}
+// Meme principe a 3 voies que pour les joueurs/l'info : la fiche enregistree juste avant par
+// quelqu'un d'autre (sur un autre appareil, ou une saisie du joueur) n'est plus ecrasee par un
+// clic fait ici. Ce qui vient d'etre modifie ICI l'emporte ; le reste vient du serveur.
+function savePlayerData(id, data) {
+  var baseKey = "pdata-" + id, storKey = "sef-pdata-" + id;
+  localStorage.setItem(storKey, JSON.stringify(data));
+  draft._dirty = false;
+  if (SYNC_URL && navigator.onLine) {
+    fetchRemoteValue(storKey).then(function (remote) {
+      var merged = mergePdataDeep(remote, data, getBase(baseKey));
+      localStorage.setItem(storKey, JSON.stringify(merged));
+      Storage.set(storKey, merged);
+      setBase(baseKey, merged);
+      if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
+      renderBackground();
+    });
+  } else {
+    Storage.set(storKey, data);
+  }
+}
 
 function clubsFromPlayers() {
   var set = {};
@@ -2416,7 +2449,7 @@ function screenAdminDayDetail() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      var pdata = App.bulk.data[p.id];
+      var pdata = bulkPdata(p.id);
       html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, dayDetailTargetTab(wd), true, iso) + '</div>';
       html += dayDetailContent(pdata, iso, wd);
       html += '</div>';
@@ -2783,6 +2816,14 @@ function screenDocumentsScoped() {
 }
 
 /* ============ OUTILS GROUPES ADMIN ============ */
+// Lecture auto-reparante : si un joueur a ete ajoute (ou une fiche fusionnee) pendant que
+// l'ecran etait deja ouvert, App.bulk.data peut ne pas le connaitre encore. Au lieu de planter,
+// on va chercher sa fiche a la demande.
+function bulkPdata(id) {
+  if (!App.bulk.data) App.bulk.data = {};
+  if (!App.bulk.data[id]) App.bulk.data[id] = getPlayerData(id);
+  return App.bulk.data[id];
+}
 function loadAllPlayerData() {
   var map = {};
   players.forEach(function (p) { map[p.id] = getPlayerData(p.id); });
@@ -2805,7 +2846,7 @@ function screenAdminBulkSemaine() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      var pdata = App.bulk.data[p.id];
+      var pdata = bulkPdata(p.id);
       var entry = pdata.semaines.find(function (s) { return s.weekStart === App.bulk.weekStart; }) || { perfJoueur: null, perfCoach: null, investJoueur: null, investCoach: null, commentaire: "" };
       html += '<div class="card"><div style="margin-bottom:10px">' + clickableName(p, "hooperJeudi", true, App.bulk.weekStart) + '</div>' +
         '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#5b6b5f;margin-bottom:6px">PERFORMANCE</div><div style="display:flex;gap:18px;flex-wrap:wrap">' +
@@ -2896,7 +2937,7 @@ function screenAdminBulkMatch() {
     groups.forEach(function (g) {
       html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
       players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-        var pdata = App.bulk.data[p.id];
+        var pdata = bulkPdata(p.id);
         var entry = pdata.bilans.find(function (b) { return b.matchId === App.bulk.matchId; }) || { commentMatch: "", dispositif: "", objectifMatch: "", objectifResultat: "", noteJoueur: null, commentaireProf: "", noteProf: null };
         html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "matchSection", true, App.bulk.matchId) + '</div>';
         if (entry.commentMatch || entry.dispositif) {
@@ -3012,7 +3053,7 @@ function screenAdminBulkDate() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     visiblePlayers.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, App.bulk.dateType === "blessures" ? "medical" : App.bulk.dateType, !scoped, App.bulk.date) + '</div>' + renderBulkDateEntry(App.bulk.data[p.id], p.id) + '</div>';
+      html += '<div class="card"><div style="margin-bottom:6px">' + clickableName(p, App.bulk.dateType === "blessures" ? "medical" : App.bulk.dateType, !scoped, App.bulk.date) + '</div>' + renderBulkDateEntry(bulkPdata(p.id), p.id) + '</div>';
     });
   });
   html += '</div>';
@@ -3182,7 +3223,7 @@ function screenBulkClubMatch() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 2px 6px">' + esc(g) + '</div>';
     visiblePlayers.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      var pdata = App.bulk.data[p.id];
+      var pdata = bulkPdata(p.id);
       var entry = pdata.hooperLundi.find(function (e) { return e.date === date; });
       html += '<div class="card"><div style="margin-bottom:8px">' + clickableName(p, "hooperWeekend", !scoped, App.bulk.clubMatchDate) + '</div>';
       if (entry && (entry.adversaireClub || entry.pointsForts || entry.pointsFaibles || entry.bienJoue != null)) {
@@ -3232,7 +3273,7 @@ function screenAdminManquants() {
   var checkDate = App.manquantsDate;
 
   var rows = players.map(function (p) {
-    var pdata = App.bulk.data[p.id];
+    var pdata = bulkPdata(p.id);
     var list = manquantsListFor(pdata, type);
     var forDate = list.find(function (e) { return e.date === checkDate; });
     var latest = list.length ? list.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0] : null;
@@ -3264,7 +3305,7 @@ function screenAdminManquants() {
         '<div style="font-size:12px;color:var(--gris);margin-top:2px">' +
         (r.filled ? "Rempli à cette date" : "Pas rempli à cette date") +
         (r.latest ? " · Dernière saisie : " + fmtShort(r.latest.date) : " · Aucune saisie jamais") + '</div>';
-      var summary = manquantsSummary(App.bulk.data[r.player.id], r.entry || r.latest, type);
+      var summary = manquantsSummary(bulkPdata(r.player.id), r.entry || r.latest, type);
       if (summary) html += '<div style="font-size:12px;color:#334036;margin-top:4px;font-style:italic">« ' + esc(summary.slice(0, 90)) + (summary.length > 90 ? "…" : "") + ' »</div>';
       html += '</div></div>';
     });
@@ -3290,7 +3331,7 @@ function screenAdminEducateurAvis() {
   groups.forEach(function (g) {
     html += '<div style="font-size:12px;font-weight:700;color:var(--gris);margin:12px 2px 6px">' + esc(g) + '</div>';
     players.filter(function (p) { return p.groupe === g; }).sort(byNomPrenom).forEach(function (p) {
-      var pdata = App.bulk.data[p.id];
+      var pdata = bulkPdata(p.id);
       var withComment = (pdata.hooperLundi || []).filter(function (e) { return e.resumeMatchCoach || e.commentaireDivers; });
       var latest = withComment.length ? withComment.sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0] : null;
 
