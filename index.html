@@ -903,11 +903,11 @@ function migratePlayers() {
 
 function savePlayers() {
   localStorage.setItem("sef-players-v1", JSON.stringify(players));
-  var snapshot = players;
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-players-v1", function () {
+      var behindAtStart = serverBehind("sef-players-v1");
       return fetchRemoteValue("sef-players-v1").then(function (remote) {
-        var merged = mergePlayersDeep(remote, snapshot);
+        var merged = (behindAtStart || serverBehind("sef-players-v1")) ? players : mergePlayersDeep(remote, players);
         players = merged;
         localStorage.setItem("sef-players-v1", JSON.stringify(merged));
         Storage.set("sef-players-v1", merged);
@@ -922,11 +922,11 @@ function savePlayers() {
 function saveInfo(onResult) {
   localStorage.setItem("sef-info-v1", JSON.stringify(info));
   draft._dirty = false;
-  var snapshot = info;
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-info-v1", function () {
+      var behindAtStart = serverBehind("sef-info-v1");
       return fetchRemoteValue("sef-info-v1").then(function (remote) {
-        var merged = mergeInfoDeep(remote, snapshot);
+        var merged = (behindAtStart || serverBehind("sef-info-v1")) ? info : mergeInfoDeep(remote, info);
         info = merged;
         localStorage.setItem("sef-info-v1", JSON.stringify(merged));
         Storage.set("sef-info-v1", merged, onResult);
@@ -964,16 +964,30 @@ function mergePdataDeep(remote, local, base) {
 // Meme principe a 3 voies que pour les joueurs/l'info : la fiche enregistree juste avant par
 // quelqu'un d'autre (sur un autre appareil, ou une saisie du joueur) n'est plus ecrasee par un
 // clic fait ici. Ce qui vient d'etre modifie ICI l'emporte ; le reste vient du serveur.
+var mergePending = {};
 function savePlayerData(id, data) {
   var baseKey = "pdata-" + id, storKey = "sef-pdata-" + id;
   localStorage.setItem(storKey, JSON.stringify(data));
   draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
+    // Un cycle deja en attente pour cette fiche lira de toute facon la version la plus recente :
+    // inutile d'en empiler un par lettre tapee.
+    if (mergePending[storKey]) return;
+    mergePending[storKey] = true;
     serializeMerge(storKey, function () {
+      mergePending[storKey] = false;
+      var behindAtStart = serverBehind(storKey);
       return fetchRemoteValue(storKey).then(function (remote) {
-        var merged = mergePdataDeep(remote, data, getBase(baseKey));
+        // IMPORTANT : on relit la fiche locale ICI, au dernier moment (et pas la photo prise au
+        // moment du clic). Sinon, une frappe faite pendant l'attente du serveur etait ecrasee par
+        // l'ancienne version du texte, et la lettre suivante repartait de ce texte raccourci.
+        var localNow = Storage.get(storKey) || data;
+        var merged = (behindAtStart || serverBehind(storKey)) ? localNow : mergePdataDeep(remote, localNow, getBase(baseKey));
         localStorage.setItem(storKey, JSON.stringify(merged));
         Storage.set(storKey, merged);
+        // Point de repere = derniere version VUE sur le serveur (pas ce qu'on vient d'envoyer, qui
+        // n'est pas encore arrive : sinon un serveur en retard ressemble a "un autre appareil a
+        // modifie le texte" et ramene une ancienne version).
         setBase(baseKey, merged);
         if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
         renderBackground();
@@ -984,6 +998,14 @@ function savePlayerData(id, data) {
   }
 }
 
+// Vrai tant qu'un envoi de cette cle est en attente, en cours, ou vient juste de partir : le
+// serveur ne reflete alors pas encore notre derniere version, donc ce qu'il renvoie est PERIME et
+// ne doit pas etre repris par-dessus ce qu'on vient d'ecrire.
+function serverBehind(key) {
+  if (syncQueue.some(function (q) { return q.key === key; })) return true;
+  var ts = recentlyPushed[key];
+  return !!ts && (Date.now() - ts) < 5000;
+}
 var mergeQueues = {};
 function serializeMerge(key, fn) {
   var prev = mergeQueues[key] || Promise.resolve();
@@ -3953,12 +3975,26 @@ function render() {
     banner = '<div class="sync-banner" id="sync-badge">⏳ ' + syncQueue.length + ' en attente d\'envoi</div>';
   }
   var shell = document.getElementById("shell");
+  // Conserve la position de defilement : sans cela, chaque clic sur une note redessinait l'ecran
+  // et la liste (24 joueurs) revenait tout en haut, "ca saute".
+  var SCROLL_SEL = '[style*="overflow-y:auto"],[style*="overflow-y: auto"],[style*="overflow:auto"]';
+  var scrollKeyNow = [App.screen, App.tab, App.activePlayerId, App.previewAs, App.adminSelectedDay, App.bulk && App.bulk.dateType, App.bulk && App.bulk.date, App.bulk && App.bulk.matchId, App.bulk && App.bulk.weekStart, App.bulk && App.bulk.clubMatchDate].join("|");
+  var sameScreen = (render._lastKey === scrollKeyNow);
+  render._lastKey = scrollKeyNow;
+  var savedScroll = Array.prototype.map.call(shell.querySelectorAll(SCROLL_SEL), function (e) { return e.scrollTop; });
+  var savedShell = shell.scrollTop, savedWin = window.pageYOffset || 0;
   // Conserve le champ en cours de saisie (focus + curseur) quand l'ecran est redessine
   var a = document.activeElement, keep = null;
   if (a && shell.contains(a) && a.id && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) {
     keep = { id: a.id, s: a.selectionStart, e: a.selectionEnd, st: a.scrollTop };
   }
   shell.innerHTML = banner + body;
+  if (sameScreen) {
+    var newScrollEls = shell.querySelectorAll(SCROLL_SEL);
+    savedScroll.forEach(function (v, i) { if (newScrollEls[i]) newScrollEls[i].scrollTop = v; });
+    shell.scrollTop = savedShell;
+    if (savedWin) { try { window.scrollTo(0, savedWin); } catch (err) {} }
+  }
   if (keep) {
     var el = document.getElementById(keep.id);
     if (el) {
