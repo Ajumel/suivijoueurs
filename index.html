@@ -287,9 +287,18 @@ function flushQueueSoon() {
   flushTimer = setTimeout(function () { flushTimer = null; flushQueue(); }, 200);
 }
 
+var flushInProgress = false;
 function flushQueue() {
+  // Un seul envoi a la fois : si un envoi est deja en cours, on ne fait rien de plus ici, il
+  // se rappellera lui-meme (flushQueueSoon) une fois termine s'il reste des elements. Avant ce
+  // garde-fou, deux envois pouvaient se chevaucher : celui qui se terminait en second retirait
+  // de la file l'element qui s'y trouvait a CE moment-la (pas forcement celui qu'il venait
+  // d'envoyer), ce qui pouvait faire disparaitre silencieusement la sauvegarde d'un autre
+  // joueur, sans aucune erreur visible.
+  if (flushInProgress) return;
   if (!SYNC_URL || !navigator.onLine || syncQueue.length === 0) return;
   var item = syncQueue[0];
+  flushInProgress = true;
   fetch(SYNC_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
@@ -298,14 +307,20 @@ function flushQueue() {
     .then(function (r) { return r.json(); })
     .then(function () {
       markRecentlyPushed(item.key);
-      syncQueue.shift();
+      // On retire precisement l'element qui vient d'etre envoye (par reference), jamais "le
+      // premier de la file a cet instant" : la file a pu changer pendant l'envoi (une autre
+      // sauvegarde peut avoir remplace l'ancienne valeur en attente pour la meme fiche).
+      var idx = syncQueue.indexOf(item);
+      if (idx !== -1) syncQueue.splice(idx, 1);
       saveQueue();
       updateSyncBadge();
       var cbs = pushCallbacks[item.key];
       if (cbs) { delete pushCallbacks[item.key]; cbs.forEach(function (cb) { cb(true); }); }
-      if (syncQueue.length > 0) flushQueueSoon();
+      flushInProgress = false;
+      if (syncQueue.length > 0) flushQueue();
     })
     .catch(function () {
+      flushInProgress = false;
       updateSyncBadge();
     });
 }
@@ -888,13 +903,17 @@ function migratePlayers() {
 
 function savePlayers() {
   localStorage.setItem("sef-players-v1", JSON.stringify(players));
+  var snapshot = players;
   if (SYNC_URL && navigator.onLine) {
-    fetchRemoteValue("sef-players-v1").then(function (remote) {
-      players = mergePlayersDeep(remote, players);
-      localStorage.setItem("sef-players-v1", JSON.stringify(players));
-      Storage.set("sef-players-v1", players);
-      setBase("players", players);
-      renderBackground();
+    serializeMerge("sef-players-v1", function () {
+      return fetchRemoteValue("sef-players-v1").then(function (remote) {
+        var merged = mergePlayersDeep(remote, snapshot);
+        players = merged;
+        localStorage.setItem("sef-players-v1", JSON.stringify(merged));
+        Storage.set("sef-players-v1", merged);
+        setBase("players", merged);
+        renderBackground();
+      });
     });
   } else {
     Storage.set("sef-players-v1", players);
@@ -903,13 +922,17 @@ function savePlayers() {
 function saveInfo(onResult) {
   localStorage.setItem("sef-info-v1", JSON.stringify(info));
   draft._dirty = false;
+  var snapshot = info;
   if (SYNC_URL && navigator.onLine) {
-    fetchRemoteValue("sef-info-v1").then(function (remote) {
-      info = mergeInfoDeep(remote, info);
-      localStorage.setItem("sef-info-v1", JSON.stringify(info));
-      Storage.set("sef-info-v1", info, onResult);
-      setBase("info", info);
-      renderBackground();
+    serializeMerge("sef-info-v1", function () {
+      return fetchRemoteValue("sef-info-v1").then(function (remote) {
+        var merged = mergeInfoDeep(remote, snapshot);
+        info = merged;
+        localStorage.setItem("sef-info-v1", JSON.stringify(merged));
+        Storage.set("sef-info-v1", merged, onResult);
+        setBase("info", merged);
+        renderBackground();
+      });
     });
   } else {
     Storage.set("sef-info-v1", info, onResult);
@@ -946,19 +969,28 @@ function savePlayerData(id, data) {
   localStorage.setItem(storKey, JSON.stringify(data));
   draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
-    fetchRemoteValue(storKey).then(function (remote) {
-      var merged = mergePdataDeep(remote, data, getBase(baseKey));
-      localStorage.setItem(storKey, JSON.stringify(merged));
-      Storage.set(storKey, merged);
-      setBase(baseKey, merged);
-      if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
-      renderBackground();
+    serializeMerge(storKey, function () {
+      return fetchRemoteValue(storKey).then(function (remote) {
+        var merged = mergePdataDeep(remote, data, getBase(baseKey));
+        localStorage.setItem(storKey, JSON.stringify(merged));
+        Storage.set(storKey, merged);
+        setBase(baseKey, merged);
+        if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
+        renderBackground();
+      });
     });
   } else {
     Storage.set(storKey, data);
   }
 }
 
+var mergeQueues = {};
+function serializeMerge(key, fn) {
+  var prev = mergeQueues[key] || Promise.resolve();
+  var next = prev.then(fn, fn);
+  mergeQueues[key] = next.catch(function () {});
+  return next;
+}
 function clubsFromPlayers() {
   var set = {};
   players.forEach(function (p) { if (p.club && p.club.trim()) set[p.club] = true; });
@@ -1063,7 +1095,10 @@ function autoSaveIfDirty() {
   switch (App.tab) {
     case "seance": saveObjectif(); break;
     case "hooperJeudi": saveHooperJeudi(); break;
-    case "hooperWeekend": saveHooperWeekend(); break;
+    case "hooperWeekend":
+      if (App.screen === "adminPlayer" && !App.previewAs) { saveHooperWeekend("joueur"); saveHooperWeekend("coach"); saveHooperWeekend("admin"); }
+      else { saveHooperWeekend((App.previewAs || App.roleChoice) === "entraineur" ? "coach" : "joueur"); }
+      break;
     case "medical":
       if (App.mesShowAdd) saveMesure();
       break;
@@ -2076,7 +2111,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
       scale5("heureuxMatch", "Es-tu heureux de ton match ?", f.heureuxMatch) + scale5("pretLundi", "Es-tu prêt pour revenir au collège en forme lundi ?", f.pretLundi) +
       '<div style="font-size:13px;font-weight:700;color:' + (allFilled ? "var(--noir)" : "var(--gris)") + ';margin:6px 0 14px">Score : ' + (allFilled ? score + "/20" : (anyFilled ? "en cours de saisie" : "pas encore rempli")) + '</div>' +
       '<div class="field"><label>Informations à partager</label>' + voiceTextarea("infos", f.infos, "") + '</div>' +
-      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend(\'joueur\')">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
   } else if (!current) {
     html += '<div style="font-size:13px;color:var(--gris);font-style:italic">Le joueur n\'a pas encore répondu pour cette date.</div>';
   } else {
@@ -2088,7 +2123,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   if (canEditCoach) {
     html += '<div class="field"><label>Résumé du match du joueur</label>' + voiceTextarea("resumeMatchCoach", f.resumeMatchCoach, "Déroulé du match, temps de jeu, poste occupé, performance...") + '</div>' +
       '<div class="field"><label>Commentaire divers</label>' + voiceTextarea("commentaireDivers", f.commentaireDivers, "") + '</div>' +
-      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend(\'coach\')">' + (current ? "Mettre à jour" : "Enregistrer") + '</button>';
   } else if (!current || (!current.resumeMatchCoach && !current.commentaireDivers)) {
     html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Pas encore rempli par l\'éducateur.</div>';
   } else {
@@ -2098,7 +2133,7 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
 
   if (isAdmin) {
     html += '<div class="card"><div class="field"><label>Ta réponse à l\'éducateur (visible par lui)</label>' + voiceTextarea("reponseAdmin", f.reponseAdmin, "Merci pour ce retour...") + '</div>' +
-      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend()">Enregistrer</button></div>';
+      '<button class="btn btn-accent btn-block" onclick="saveHooperWeekend(\'admin\')">Enregistrer</button></div>';
   } else if (role === "entraineur") {
     html += current && current.reponseAdmin
       ? '<div class="card" style="background:var(--or-clair);border:1px solid var(--or-bord)"><div style="font-size:11px;font-weight:700;color:var(--rouge);margin-bottom:4px">RÉPONSE DU RESPONSABLE DE LA SECTION</div><div style="font-size:13px;color:#334036">' + esc(current.reponseAdmin) + '</div></div>'
@@ -2107,13 +2142,27 @@ function tabHooperWeekend(player, pdata, isAdmin, role) {
   return html;
 }
 function setHooperWeekendDate(d) { App.hooperWeekendDate = d; draft._hwInit = false; render(); }
-function saveHooperWeekend() {
+// section = quelle partie du formulaire vient d'etre validee ("joueur", "coach" ou "admin").
+// On ne prend du formulaire QUE les champs de cette section : le reste de la fiche est relu a
+// l'instant sur l'appareil (pas repris du formulaire, potentiellement ouvert depuis un moment)
+// pour ne jamais ecraser par erreur ce qu'une autre personne (educateur, responsable...) a
+// ecrit entre-temps.
+var HW_JOUEUR_FIELDS = ["aJoueClub", "adversaireClub", "scoreClub", "dureeJeuClub", "posteJoueClub", "pointsForts", "pointsFaibles", "bienJoue", "formePhysiqueWE", "heureuxMatch", "pretLundi", "infos"];
+function saveHooperWeekend(section) {
   var pid = App.activePlayerId;
   var pdata = getPlayerData(pid);
   var merged = mergeDuplicates(pdata.hooperLundi, function (e) { return e.date === App.hooperWeekendDate; });
-  var noteVals = [draft.bienJoue, draft.formePhysiqueWE, draft.heureuxMatch, draft.pretLundi];
-  var score = noteVals.every(function (v) { return v != null; }) ? noteVals.reduce(function (a, b) { return a + b; }, 0) : null;
-  var entry = Object.assign({ id: merged ? merged.id : uid(), date: App.hooperWeekendDate }, cleanDraft(), { score: score });
+  var entry = merged ? Object.assign({}, merged) : { id: uid(), date: App.hooperWeekendDate, aJoueClub: "Oui", adversaireClub: "", scoreClub: "", dureeJeuClub: "", posteJoueClub: "", pointsForts: "", pointsFaibles: "", bienJoue: null, formePhysiqueWE: null, heureuxMatch: null, pretLundi: null, infos: "", resumeMatchCoach: "", commentaireDivers: "", reponseAdmin: "" };
+  if (section === "joueur") {
+    HW_JOUEUR_FIELDS.forEach(function (k) { entry[k] = draft[k]; });
+    var noteVals = [draft.bienJoue, draft.formePhysiqueWE, draft.heureuxMatch, draft.pretLundi];
+    entry.score = noteVals.every(function (v) { return v != null; }) ? noteVals.reduce(function (a, b) { return a + b; }, 0) : null;
+  } else if (section === "coach") {
+    entry.resumeMatchCoach = draft.resumeMatchCoach;
+    entry.commentaireDivers = draft.commentaireDivers;
+  } else if (section === "admin") {
+    entry.reponseAdmin = draft.reponseAdmin;
+  }
   pdata.hooperLundi = pdata.hooperLundi.filter(function (e) { return e.date !== App.hooperWeekendDate; }).concat([entry]);
   savePlayerData(pid, pdata);
   render();
@@ -2466,6 +2515,7 @@ function dayDetailTargetTab(wd) {
   return "identite";
 }
 function dayDetailContent(pdata, iso, wd) {
+  var matchDuJour = matches.find(function (m) { return m.date === iso; });
   var html = "";
   if (wd >= 1 && wd <= 4) {
     var obj = pdata.objectifs.find(function (e) { return e.date === iso; });
@@ -2504,6 +2554,7 @@ function dayDetailContent(pdata, iso, wd) {
     if (!hw) html += '<div style="font-size:12px;color:var(--gris);font-style:italic">Match club (samedi) : pas rempli à cette date' + lastEntryHint(pdata.hooperLundi) + '.</div>';
     else {
       html += '<div style="font-size:12px;color:#334036">A joué avec son club : ' + esc(hw.aJoueClub || "—") + (hw.dureeJeuClub ? ' (' + esc(hw.dureeJeuClub) + (hw.posteJoueClub ? ', ' + esc(hw.posteJoueClub) : '') + ')' : '') + '</div>';
+      if (hw.adversaireClub) html += '<div style="font-size:12px;color:#334036"><b>Contre :</b> ' + esc(hw.adversaireClub) + (hw.scoreClub ? ' (' + esc(hw.scoreClub) + ')' : '') + '</div>';
       if (hw.pointsForts) html += '<div style="font-size:12px;color:#334036"><b>Points forts :</b> ' + esc(hw.pointsForts) + '</div>';
       if (hw.pointsFaibles) html += '<div style="font-size:12px;color:#334036"><b>Points faibles :</b> ' + esc(hw.pointsFaibles) + '</div>';
       html += '<div style="font-size:12px;color:#334036;margin-top:2px">A bien joué ' + fmtNote(hw.bienJoue, 5) + ' · Forme physique ' + fmtNote(hw.formePhysiqueWE, 5) + ' · Heureux du match ' + fmtNote(hw.heureuxMatch, 5) + ' · Prêt lundi ' + fmtNote(hw.pretLundi, 5) + '</div>';
@@ -2514,6 +2565,20 @@ function dayDetailContent(pdata, iso, wd) {
           (hw.commentaireDivers ? '<div style="font-size:12px">' + esc(hw.commentaireDivers) + '</div>' : "") + '</div>';
       }
     }
+  }
+  // Un match de section peut tomber n'importe quel jour de la semaine : on l'affiche en plus,
+  // quel que soit le jour (wd), des que la date correspond a un match existant.
+  if (matchDuJour) {
+    var bi = pdata.bilans.find(function (b) { return b.matchId === matchDuJour.id; });
+    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd"><b style="font-size:11px;color:var(--rouge)">MATCH DE SECTION</b> <span style="font-size:11px;color:var(--gris)">vs ' + esc(matchDuJour.adversaire || "?") + (matchDuJour.scoreFinal ? ' (' + esc(matchDuJour.scoreFinal) + ')' : '') + '</span>';
+    if (!bi || (!bi.commentMatch && !bi.dispositif && !bi.commentaireProf)) {
+      html += '<div style="font-size:12px;color:var(--gris);font-style:italic;margin-top:2px">Pas encore d\'appréciation.</div>';
+    } else {
+      if (bi.dispositif) html += '<div style="font-size:12px;color:#334036;margin-top:2px"><b>Dispositif :</b> ' + esc(bi.dispositif) + '</div>';
+      if (bi.commentMatch) html += '<div style="font-size:12px;color:#334036"><b>Appréciation joueur :</b> ' + esc(bi.commentMatch) + (bi.noteJoueur != null ? ' (' + bi.noteJoueur + '/10)' : '') + '</div>';
+      if (bi.commentaireProf) html += '<div style="font-size:12px;color:#334036"><b>Commentaire responsable :</b> ' + esc(bi.commentaireProf) + (bi.noteProf != null ? ' (' + bi.noteProf + '/10)' : '') + '</div>';
+    }
+    html += '</div>';
   }
   return html;
 }
