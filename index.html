@@ -342,6 +342,11 @@ function pullFromRemote(key) {
     .catch(function () { return null; });
 }
 
+// Cles modifiees sur cet appareil et pas encore mises en file d'envoi (le temps d'aller lire le
+// serveur pour fusionner). Pendant ce temps, une synchronisation descendante ne doit JAMAIS
+// remplacer ces donnees par la version du serveur : c'est ce qui faisait "revenir a la version
+// d'avant" une fiche au hasard, souvent la premiere modifiee.
+var dirtyKeys = {};
 function pullAllFromRemote() {
   if (!SYNC_URL || !navigator.onLine) return Promise.resolve({ changed: false, remoteKeys: [], ok: false });
   return fetch(SYNC_URL)
@@ -353,7 +358,7 @@ function pullAllFromRemote() {
       var changed = false;
       var remoteKeys = Object.keys(data.all);
       remoteKeys.forEach(function (k) {
-        if (!pendingKeys[k] && !isInGracePeriod(k)) {
+        if (!pendingKeys[k] && !dirtyKeys[k] && !isInGracePeriod(k)) {
           localStorage.setItem(k, JSON.stringify(data.all[k]));
           if (k === "sef-info-v1") setBase("info", data.all[k]);
           if (k === "sef-players-v1") setBase("players", data.all[k]);
@@ -903,6 +908,7 @@ function migratePlayers() {
 
 function savePlayers() {
   localStorage.setItem("sef-players-v1", JSON.stringify(players));
+  dirtyKeys["sef-players-v1"] = true;
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-players-v1", function () {
       var behindAtStart = serverBehind("sef-players-v1");
@@ -911,16 +917,19 @@ function savePlayers() {
         players = merged;
         localStorage.setItem("sef-players-v1", JSON.stringify(merged));
         Storage.set("sef-players-v1", merged);
+        delete dirtyKeys["sef-players-v1"];
         setBase("players", merged);
         renderBackground();
-      });
+      }).catch(function () { delete dirtyKeys["sef-players-v1"]; });
     });
   } else {
     Storage.set("sef-players-v1", players);
+    delete dirtyKeys["sef-players-v1"];
   }
 }
 function saveInfo(onResult) {
   localStorage.setItem("sef-info-v1", JSON.stringify(info));
+  dirtyKeys["sef-info-v1"] = true;
   draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-info-v1", function () {
@@ -930,12 +939,14 @@ function saveInfo(onResult) {
         info = merged;
         localStorage.setItem("sef-info-v1", JSON.stringify(merged));
         Storage.set("sef-info-v1", merged, onResult);
+        delete dirtyKeys["sef-info-v1"];
         setBase("info", merged);
         renderBackground();
-      });
+      }).catch(function () { delete dirtyKeys["sef-info-v1"]; });
     });
   } else {
     Storage.set("sef-info-v1", info, onResult);
+    delete dirtyKeys["sef-info-v1"];
   }
 }
 function saveMatches() { Storage.set("sef-matches-v1", matches); }
@@ -968,6 +979,7 @@ var mergePending = {};
 function savePlayerData(id, data) {
   var baseKey = "pdata-" + id, storKey = "sef-pdata-" + id;
   localStorage.setItem(storKey, JSON.stringify(data));
+  dirtyKeys[storKey] = true;   // modifie ici, pas encore en file d'envoi : la synchro descendante n'y touche pas
   draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
     // Un cycle deja en attente pour cette fiche lira de toute facon la version la plus recente :
@@ -978,23 +990,21 @@ function savePlayerData(id, data) {
       mergePending[storKey] = false;
       var behindAtStart = serverBehind(storKey);
       return fetchRemoteValue(storKey).then(function (remote) {
-        // IMPORTANT : on relit la fiche locale ICI, au dernier moment (et pas la photo prise au
-        // moment du clic). Sinon, une frappe faite pendant l'attente du serveur etait ecrasee par
-        // l'ancienne version du texte, et la lettre suivante repartait de ce texte raccourci.
+        // On relit la fiche locale ICI, au dernier moment (pas la photo prise au moment du
+        // clic) : une frappe faite pendant l'attente du serveur ne doit pas etre ecrasee.
         var localNow = Storage.get(storKey) || data;
         var merged = (behindAtStart || serverBehind(storKey)) ? localNow : mergePdataDeep(remote, localNow, getBase(baseKey));
         localStorage.setItem(storKey, JSON.stringify(merged));
         Storage.set(storKey, merged);
-        // Point de repere = derniere version VUE sur le serveur (pas ce qu'on vient d'envoyer, qui
-        // n'est pas encore arrive : sinon un serveur en retard ressemble a "un autre appareil a
-        // modifie le texte" et ramene une ancienne version).
+        delete dirtyKeys[storKey];   // desormais en file d'envoi : c'est la file qui protege
         setBase(baseKey, merged);
         if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
         renderBackground();
-      });
+      }).catch(function () { delete dirtyKeys[storKey]; });
     });
   } else {
     Storage.set(storKey, data);
+    delete dirtyKeys[storKey];
   }
 }
 
