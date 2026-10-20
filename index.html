@@ -204,13 +204,51 @@ function isInGracePeriod(key) {
 
 // Recupere la valeur actuelle d'UNE cle sur le serveur, pour la fusionner avec ce qu'on
 // s'apprete a ecrire (au lieu d'ecraser aveuglement le travail fait depuis un autre appareil).
-function fetchRemoteValue(key) {
-  if (!SYNC_URL || !navigator.onLine || typeof fetch !== "function") return Promise.resolve(null);
-  return fetch(SYNC_URL)
+function fetchRemoteValue(key, attempt) {
+  attempt = attempt || 1;
+  if (!SYNC_URL || !navigator.onLine || typeof fetch !== "function") return Promise.reject(new Error("offline"));
+  return fetch(SYNC_URL + "?key=" + encodeURIComponent(key))
     .then(function (r) { return r.json(); })
-    .then(function (data) { return data && data.all ? data.all[key] : null; })
-    .catch(function () { return null; });
+    .then(function (data) {
+      if (!data || !("value" in data)) throw new Error("bad response");
+      return data.value;   // null = la cle n'existe pas encore sur le serveur
+    })
+    .catch(function (err) {
+      // Echec de lecture (serveur lent, coupure) : on REESSAIE, mais on ne renvoie JAMAIS
+      // "rien" a la place de la vraie valeur, sinon la sauvegarde ecraserait le serveur a l'aveugle.
+      if (attempt >= 3) throw err;
+      return new Promise(function (res) { setTimeout(res, 800 * attempt); })
+        .then(function () { return fetchRemoteValue(key, attempt + 1); });
+    });
 }
+// Les sauvegardes qui n'ont pas pu etre fusionnees avec le serveur (hors ligne, serveur lent) restent
+// "en attente de fusion" (et protegees contre l'ecrasement) jusqu'a ce qu'on puisse le faire.
+var resyncTimer = null;
+function scheduleResync() {
+  if (resyncTimer) return;
+  resyncTimer = setTimeout(function () { resyncTimer = null; resyncDirty(); }, 8000);
+}
+var resyncing = false;
+function resyncDirty() {
+  if (!SYNC_URL || !navigator.onLine) return;
+  var keys = Object.keys(dirtyKeys);
+  if (!keys.length) return;
+  resyncing = true;
+  try {
+    keys.forEach(function (k) {
+      if (mergeRunning[k] > 0 || mergePending[k]) return;
+      if (k === "sef-players-v1") savePlayers();
+      else if (k === "sef-info-v1") saveInfo();
+      else if (k === "sef-matches-v1") saveMatches();
+      else if (k.indexOf("sef-pdata-") === 0) { var d = Storage.get(k); if (d) savePlayerData(k.slice("sef-pdata-".length), d); else clearDirty(k); }
+      else clearDirty(k);
+    });
+  } finally { resyncing = false; }
+  if (Object.keys(dirtyKeys).length) scheduleResync();
+}
+setInterval(resyncDirty, 15000);
+window.addEventListener("online", function () { setTimeout(resyncDirty, 500); });
+
 // ---- Fusion a 3 voies : base (derniere version connue du serveur), local (ce que je viens de
 // modifier), remote (ce que le serveur contient maintenant). Ce que JE viens de changer gagne,
 // le reste vient du serveur : rien ne se perd, une suppression reste supprimee, et un champ vide
@@ -218,12 +256,18 @@ function fetchRemoteValue(key) {
 function jeq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function getBase(name) { try { return JSON.parse(localStorage.getItem("sef-base-" + name)); } catch (e) { return null; } }
 function setBase(name, value) { try { localStorage.setItem("sef-base-" + name, JSON.stringify(value)); } catch (e) {} }
+function isEmptyVal(v) { return v === "" || v === null || v === undefined; }
 function merge3Obj(base, local, remote) {
   base = base || {}; remote = remote || {};
   var out = {}, seen = {};
   Object.keys(remote).concat(Object.keys(local)).forEach(function (k) {
     if (seen[k]) return; seen[k] = true;
     var inL = k in local, inR = k in remote;
+    // Une valeur locale VIDE ("", null) sur un champ que je n'ai jamais connu (absent de la base)
+    // n'est pas une modification volontaire : c'est la valeur par defaut d'une fiche creee ici.
+    // Elle ne doit JAMAIS effacer ce qu'un autre appareil a ecrit (appreciation du joueur,
+    // commentaire du responsable...).
+    if (inL && inR && !(k in base) && isEmptyVal(local[k]) && !isEmptyVal(remote[k])) { out[k] = remote[k]; return; }
     if (inL && (!inR || !jeq(local[k], base[k]))) out[k] = local[k];
     else if (inR) out[k] = remote[k];
   });
@@ -347,6 +391,10 @@ function pullFromRemote(key) {
 // remplacer ces donnees par la version du serveur : c'est ce qui faisait "revenir a la version
 // d'avant" une fiche au hasard, souvent la premiere modifiee.
 var dirtyKeys = {};
+try { dirtyKeys = JSON.parse(localStorage.getItem("sef-dirty-keys") || "{}") || {}; } catch (e) { dirtyKeys = {}; }
+function persistDirty() { try { localStorage.setItem("sef-dirty-keys", JSON.stringify(dirtyKeys)); } catch (e) {} }
+function markDirty(k) { dirtyKeys[k] = true; persistDirty(); }
+function clearDirty(k) { delete dirtyKeys[k]; persistDirty(); }
 function pullAllFromRemote() {
   if (!SYNC_URL || !navigator.onLine) return Promise.resolve({ changed: false, remoteKeys: [], ok: false });
   return fetch(SYNC_URL)
@@ -362,6 +410,7 @@ function pullAllFromRemote() {
           localStorage.setItem(k, JSON.stringify(data.all[k]));
           if (k === "sef-info-v1") setBase("info", data.all[k]);
           if (k === "sef-players-v1") setBase("players", data.all[k]);
+          if (k === "sef-matches-v1") setBase("matches", data.all[k]);
           if (k.indexOf("sef-pdata-") === 0) setBase("pdata-" + k.slice("sef-pdata-".length), data.all[k]);
           changed = true;
         }
@@ -394,6 +443,7 @@ function syncOnLoad() {
       if (!known["sef-matches-v1"]) Storage.set("sef-matches-v1", matches);
     }
     if (App.screen !== "welcome" && App.screen !== "adminLogin") renderBackground();
+    resyncDirty();
   });
 }
 
@@ -908,7 +958,7 @@ function migratePlayers() {
 
 function savePlayers() {
   localStorage.setItem("sef-players-v1", JSON.stringify(players));
-  dirtyKeys["sef-players-v1"] = true;
+  markDirty("sef-players-v1");
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-players-v1", function () {
       var behindAtStart = serverBehind("sef-players-v1");
@@ -917,20 +967,20 @@ function savePlayers() {
         players = merged;
         localStorage.setItem("sef-players-v1", JSON.stringify(merged));
         Storage.set("sef-players-v1", merged);
-        delete dirtyKeys["sef-players-v1"];
+        clearDirty("sef-players-v1");
         setBase("players", merged);
         renderBackground();
-      }).catch(function () { delete dirtyKeys["sef-players-v1"]; });
+      }).catch(function () { scheduleResync(); });
     });
   } else {
-    Storage.set("sef-players-v1", players);
-    delete dirtyKeys["sef-players-v1"];
+    if (SYNC_URL) scheduleResync();   // hors ligne : on garde en local, on fusionnera avec le serveur au retour du reseau
+    else clearDirty("sef-players-v1");
   }
 }
 function saveInfo(onResult) {
   localStorage.setItem("sef-info-v1", JSON.stringify(info));
-  dirtyKeys["sef-info-v1"] = true;
-  draft._dirty = false;
+  markDirty("sef-info-v1");
+  if (!resyncing) draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
     serializeMerge("sef-info-v1", function () {
       var behindAtStart = serverBehind("sef-info-v1");
@@ -939,17 +989,39 @@ function saveInfo(onResult) {
         info = merged;
         localStorage.setItem("sef-info-v1", JSON.stringify(merged));
         Storage.set("sef-info-v1", merged, onResult);
-        delete dirtyKeys["sef-info-v1"];
+        clearDirty("sef-info-v1");
         setBase("info", merged);
         renderBackground();
-      }).catch(function () { delete dirtyKeys["sef-info-v1"]; });
+      }).catch(function () { scheduleResync(); });
     });
   } else {
-    Storage.set("sef-info-v1", info, onResult);
-    delete dirtyKeys["sef-info-v1"];
+    if (SYNC_URL) scheduleResync(); else clearDirty("sef-info-v1");
+    if (onResult) onResult(true);
   }
 }
-function saveMatches() { Storage.set("sef-matches-v1", matches); }
+function saveMatches() {
+  var K = "sef-matches-v1";
+  localStorage.setItem(K, JSON.stringify(matches));
+  markDirty(K);
+  if (SYNC_URL && navigator.onLine) {
+    serializeMerge(K, function () {
+      var behindAtStart = serverBehind(K);
+      return fetchRemoteValue(K).then(function (remote) {
+        var localNow = Storage.get(K) || matches;
+        var merged = (behindAtStart || serverBehind(K) || !remote) ? localNow
+          : merge3Array(getBase("matches"), localNow, remote, function (m) { return m.id; });
+        matches = merged;
+        localStorage.setItem(K, JSON.stringify(merged));
+        Storage.set(K, merged);
+        clearDirty(K);
+        setBase("matches", merged);
+        renderBackground();
+      }).catch(function () { scheduleResync(); });
+    });
+  } else {
+    if (SYNC_URL) scheduleResync(); else clearDirty(K);
+  }
+}
 // Toujours renvoyer une fiche complete : une fiche enregistree par une ancienne version de
 // l'application (ou incomplete) pouvait manquer d'un tableau et faire planter l'affichage.
 function getPlayerData(id) {
@@ -979,8 +1051,8 @@ var mergePending = {};
 function savePlayerData(id, data) {
   var baseKey = "pdata-" + id, storKey = "sef-pdata-" + id;
   localStorage.setItem(storKey, JSON.stringify(data));
-  dirtyKeys[storKey] = true;   // modifie ici, pas encore en file d'envoi : la synchro descendante n'y touche pas
-  draft._dirty = false;
+  markDirty(storKey);   // modifie ici, pas encore en file d'envoi : la synchro descendante n'y touche pas
+  if (!resyncing) draft._dirty = false;
   if (SYNC_URL && navigator.onLine) {
     // Un cycle deja en attente pour cette fiche lira de toute facon la version la plus recente :
     // inutile d'en empiler un par lettre tapee.
@@ -996,15 +1068,14 @@ function savePlayerData(id, data) {
         var merged = (behindAtStart || serverBehind(storKey)) ? localNow : mergePdataDeep(remote, localNow, getBase(baseKey));
         localStorage.setItem(storKey, JSON.stringify(merged));
         Storage.set(storKey, merged);
-        delete dirtyKeys[storKey];   // desormais en file d'envoi : c'est la file qui protege
+        clearDirty(storKey);   // desormais en file d'envoi : c'est la file qui protege
         setBase(baseKey, merged);
         if (App.bulk && App.bulk.data && App.bulk.data[id]) App.bulk.data[id] = merged;
         renderBackground();
-      }).catch(function () { delete dirtyKeys[storKey]; });
+      }).catch(function () { scheduleResync(); });
     });
   } else {
-    Storage.set(storKey, data);
-    delete dirtyKeys[storKey];
+    if (SYNC_URL) scheduleResync(); else clearDirty(storKey);
   }
 }
 
@@ -1017,9 +1088,12 @@ function serverBehind(key) {
   return !!ts && (Date.now() - ts) < 5000;
 }
 var mergeQueues = {};
+var mergeRunning = {};
 function serializeMerge(key, fn) {
   var prev = mergeQueues[key] || Promise.resolve();
+  mergeRunning[key] = (mergeRunning[key] || 0) + 1;
   var next = prev.then(fn, fn);
+  next.then(function () { mergeRunning[key]--; }, function () { mergeRunning[key]--; });
   mergeQueues[key] = next.catch(function () {});
   return next;
 }
@@ -2009,7 +2083,11 @@ function tabMatchSection(player, pdata, isAdmin, role) {
   var canEditPlayer = isAdmin || role === "joueur";
   var sorted = matches.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   if (sorted.length === 0) return '<div class="empty">Aucun match de section pour l\'instant.</div>';
-  if (!App.matchSelectedId) App.matchSelectedId = sorted[0].id;
+  if (!App.matchSelectedId) {
+    // Par defaut : le match le plus recent DEJA JOUE (date <= aujourd'hui), pas un match a venir.
+    var played = sorted.filter(function (m) { return m.date <= todayIso(); });
+    App.matchSelectedId = (played[0] || sorted[sorted.length - 1]).id;
+  }
   var match = sorted.find(function (m) { return m.id === App.matchSelectedId; }) || sorted[0];
   var mine = mergeDuplicates(pdata.bilans, function (b) { return b.matchId === match.id; });
 
